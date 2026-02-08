@@ -1,0 +1,1142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+  DELETED
+}
+
+enum CompanyStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum JobStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  PAUSED
+  CLOSED
+  FILLED
+  EXPIRED
+  ARCHIVED
+}
+
+enum VideoStatus {
+  PROCESSING
+  ACTIVE
+  REJECTED
+  DELETED
+}
+
+enum MatchStatus {
+  NEW
+  PENDING
+  VIEWED
+  ACTIVE
+  CHATTING
+  INTERVIEW_SCHEDULED
+  HIRED
+  DECLINED
+  REJECTED
+  EXPIRED
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum NotificationType {
+  NEW_LIKE
+  NEW_MATCH
+  NEW_MESSAGE
+  PROFILE_VIEW
+  JOB_EXPIRING
+  SYSTEM
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEUE ENUMS (Multi-Portal)
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum PortalStatus {
+  GEPLANT
+  ENTWICKLUNG
+  BETA
+  LIVE
+  PAUSIERT
+  EINGESTELLT
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PORTALS (Alle Genie-Portale) - NEU
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Portal {
+  id                    Int           @id @default(autoincrement())
+
+  // Identifikation
+  slug                  String        @unique @db.VarChar(50)
+  name                  String        @db.VarChar(100)
+  domain                String        @db.VarChar(100)
+
+  // Kategorisierung
+  kategorie             String        @db.VarChar(50)
+
+  // Branding
+  farbe                 String        @db.VarChar(7)
+  icon                  String        @db.VarChar(10)
+  beschreibung          String?       @db.VarChar(255)
+  logoUrl               String?       @map("logo_url") @db.VarChar(500)
+
+  // Status
+  status                PortalStatus  @default(GEPLANT)
+
+  // Features (welche Module aktiv)
+  features              Json          @default("{}")
+
+  // Konfiguration
+  config                Json          @default("{}")
+
+  // Timestamps
+  createdAt             DateTime      @default(now()) @map("created_at")
+  launchDate            DateTime?     @map("launch_date")
+
+  // Relations
+  companies             Company[]
+  users                 User[]
+  subscriptions         Subscription[]
+  invoices              Invoice[]
+  jobPosts              JobPost[]
+  userBereiche          UserBereich[]
+  companyBereiche       CompanyBereich[]
+  auditLogs             AuditLog[]
+
+  @@map("portals")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CUSTOMERS (Portal-übergreifende Kunden) - NEU
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Customer {
+  id                    String    @id @default(uuid())
+
+  // Basis-Daten
+  name                  String    @db.VarChar(255)
+  email                 String    @db.VarChar(255)
+  phone                 String?   @db.VarChar(30)
+
+  // Adresse
+  street                String?   @db.VarChar(255)
+  postalCode            String?   @map("postal_code") @db.VarChar(10)
+  city                  String?   @db.VarChar(100)
+  country               String    @default("DE") @db.VarChar(2)
+
+  // Rechnungsdaten
+  taxId                 String?   @map("tax_id") @db.VarChar(50)
+
+  // Stripe
+  stripeCustomerId      String?   @unique @map("stripe_customer_id") @db.VarChar(100)
+
+  // Notizen
+  notes                 String?   @db.Text
+  tags                  Json      @default("[]")
+
+  // Timestamps
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  companies             Company[]
+  subscriptions         Subscription[]
+  invoices              Invoice[]
+  payments              Payment[]
+
+  @@index([email])
+  @@map("customers")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVOICE (Rechnungen) - NEU
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Invoice {
+  id                    String        @id @default(uuid())
+
+  portalId              Int           @default(1) @map("portal_id")
+  customerId            String?       @map("customer_id")
+  companyId             String?       @map("company_id")
+
+  // Rechnungsdaten
+  invoiceNumber         String?       @unique @map("invoice_number") @db.VarChar(50)
+  status                InvoiceStatus @default(DRAFT)
+
+  // Beträge
+  subtotal              Decimal       @default(0) @db.Decimal(10, 2)
+  taxRate               Decimal       @default(19) @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount             Decimal       @default(0) @map("tax_amount") @db.Decimal(10, 2)
+  total                 Decimal       @default(0) @db.Decimal(10, 2)
+  currency              String        @default("EUR") @db.VarChar(3)
+
+  // Beschreibung
+  description           String?       @db.Text
+  lineItems             Json          @default("[]") @map("line_items")
+
+  // Zeitraum
+  periodStart           DateTime?     @map("period_start")
+  periodEnd             DateTime?     @map("period_end")
+
+  // Stripe
+  stripeInvoiceId       String?       @map("stripe_invoice_id") @db.VarChar(100)
+
+  // Timestamps
+  issuedAt              DateTime?     @map("issued_at")
+  dueAt                 DateTime?     @map("due_at")
+  paidAt                DateTime?     @map("paid_at")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  portal                Portal        @relation(fields: [portalId], references: [id])
+  customer              Customer?     @relation(fields: [customerId], references: [id])
+  payments              Payment[]
+
+  @@index([customerId])
+  @@index([portalId])
+  @@map("invoices")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAYMENTS (Zahlungseingänge) - NEU
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Payment {
+  id                    String        @id @default(uuid())
+
+  customerId            String        @map("customer_id")
+  invoiceId             String?       @map("invoice_id")
+
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @default("EUR") @db.VarChar(3)
+
+  // Payment Provider (stripe ODER paypal)
+  provider              String        @default("paypal") @db.VarChar(20)
+  paymentMethod         String?       @map("payment_method") @db.VarChar(50)
+  status                PaymentStatus @default(PENDING)
+
+  // Stripe IDs (optional)
+  stripePaymentIntentId String?       @map("stripe_payment_intent_id") @db.VarChar(100)
+
+  // PayPal IDs (optional)
+  paypalOrderId         String?       @map("paypal_order_id") @db.VarChar(100)
+  paypalCaptureId       String?       @map("paypal_capture_id") @db.VarChar(100)
+  paypalSubscriptionId  String?       @map("paypal_subscription_id") @db.VarChar(100)
+
+  failureReason         String?       @map("failure_reason") @db.Text
+
+  createdAt             DateTime      @default(now()) @map("created_at")
+
+  customer              Customer      @relation(fields: [customerId], references: [id])
+  invoice               Invoice?      @relation(fields: [invoiceId], references: [id])
+
+  @@index([customerId])
+  @@map("payments")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// USER_BEREICHE (User aktiviert Bereiche in der App) - NEU
+// ═══════════════════════════════════════════════════════════════════════════
+
+model UserBereich {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  portalId     Int      @map("portal_id")
+
+  isActive     Boolean  @default(true) @map("is_active")
+
+  // Bereichsspezifische Profildaten als JSON
+  profileData  Json     @default("{}") @map("profile_data")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portal       Portal   @relation(fields: [portalId], references: [id])
+
+  @@unique([userId, portalId])
+  @@map("user_bereiche")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANY_BEREICHE (Betrieb aktiviert Bereiche) - NEU
+// ═══════════════════════════════════════════════════════════════════════════
+
+model CompanyBereich {
+  id             String   @id @default(uuid())
+  companyId      String   @map("company_id")
+  portalId       Int      @map("portal_id")
+
+  isActive       Boolean  @default(true) @map("is_active")
+
+  // Separates Abo pro Bereich möglich
+  subscriptionId String?  @map("subscription_id")
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  portal         Portal       @relation(fields: [portalId], references: [id])
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([companyId, portalId])
+  @@map("company_bereiche")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDIT_LOG (Zentrale Aktivitätsverfolgung) - NEU
+// ═══════════════════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id                    String     @id @default(uuid())
+
+  adminUserId           String?    @map("admin_user_id")
+  portalId              Int?       @map("portal_id")
+
+  action                String     @db.VarChar(100)
+  entityType            String     @map("entity_type") @db.VarChar(50)
+  entityId              String?    @map("entity_id")
+
+  description           String     @db.Text
+  oldValues             Json?      @map("old_values")
+  newValues             Json?      @map("new_values")
+
+  ipAddress             String?    @map("ip_address") @db.VarChar(45)
+  userAgent             String?    @map("user_agent") @db.Text
+
+  createdAt             DateTime   @default(now()) @map("created_at")
+
+  adminUser             AdminUser? @relation(fields: [adminUserId], references: [id])
+  portal                Portal?    @relation(fields: [portalId], references: [id])
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// USERS (Jugendliche / Azubi-Suchende) - ERWEITERT
+// ═══════════════════════════════════════════════════════════════════════════
+
+model User {
+  id                    String    @id @default(uuid())
+
+  // Auth
+  email                 String    @unique
+  passwordHash          String    @map("password_hash")
+
+  // Basis
+  phone                 String?
+  firstName             String    @map("first_name")
+  lastName              String?   @map("last_name")
+  displayName           String?   @map("display_name")
+  birthDate             DateTime? @map("birth_date") @db.Date
+  avatarUrl             String?   @map("avatar_url") @db.VarChar(500)
+
+  // Standort
+  postalCode            String?   @map("postal_code") @db.VarChar(10)
+  city                  String?   @db.VarChar(100)
+  latitude              Decimal?  @db.Decimal(10, 8)
+  longitude             Decimal?  @db.Decimal(11, 8)
+  maxDistanceKm         Int       @default(30) @map("max_distance_km")
+
+  // Bildung
+  currentSchoolType     String?   @map("current_school_type") @db.VarChar(50)
+  graduationYear        Int?      @map("graduation_year")
+
+  // Profil
+  bio                   String?   @db.Text
+  interests             Json?     @default("[]")
+  strengths             Json?     @default("[]")
+  lookingFor            String?   @map("looking_for") @db.Text
+  preferredProfessions  Json?     @default("[]") @map("preferred_professions")
+  preferredStartDate    DateTime? @map("preferred_start_date") @db.Date
+
+  // Status
+  status                UserStatus @default(ACTIVE)
+  profileComplete       Boolean    @default(false) @map("profile_complete")
+  completenessScore     Int        @default(0) @map("completeness_score")
+  emailVerified         Boolean    @default(false) @map("email_verified")
+  emailVerifyToken      String?    @map("email_verify_token")
+
+  // Settings
+  pushEnabled           Boolean    @default(true) @map("push_enabled")
+  emailNotifications    Boolean    @default(true) @map("email_notifications")
+  profileVisible        Boolean    @default(true) @map("profile_visible")
+
+  // Consent
+  termsAcceptedAt       DateTime?  @map("terms_accepted_at")
+  privacyAcceptedAt     DateTime?  @map("privacy_accepted_at")
+  parentConsent         Boolean    @default(false) @map("parent_consent")
+  parentEmail           String?    @map("parent_email")
+
+  // Password Reset
+  passwordResetToken    String?    @map("password_reset_token")
+  passwordResetExpires  DateTime?  @map("password_reset_expires")
+
+  // Refresh Token
+  refreshToken          String?    @map("refresh_token") @db.Text
+
+  // FCM Token
+  fcmToken              String?    @map("fcm_token") @db.VarChar(500)
+
+  // Multi-Portal (NEU)
+  portalId              Int        @default(1) @map("portal_id")
+
+  // Timestamps
+  createdAt             DateTime   @default(now()) @map("created_at")
+  updatedAt             DateTime   @updatedAt @map("updated_at")
+  lastActiveAt          DateTime   @default(now()) @map("last_active_at")
+  deletedAt             DateTime?  @map("deleted_at")
+
+  // Relations (bestehend)
+  likes                 Like[]
+  companyLikes          CompanyLike[]
+  matches               Match[]
+  chats                 Chat[]
+  messages              Message[]  @relation("UserMessages")
+  notifications         Notification[]
+  aiConversations       AiConversation[]
+  events                Event[]
+
+  // Relations (NEU)
+  portal                Portal     @relation(fields: [portalId], references: [id])
+  userBereiche          UserBereich[]
+
+  @@index([postalCode])
+  @@index([status])
+  @@index([email])
+  @@map("users")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANIES (Ausbildungsbetriebe) - ERWEITERT
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Company {
+  id                    String    @id @default(uuid())
+
+  name                  String    @db.VarChar(255)
+  slug                  String    @unique @db.VarChar(100)
+  legalName             String?   @map("legal_name") @db.VarChar(255)
+
+  email                 String    @db.VarChar(255)
+  phone                 String?   @db.VarChar(30)
+  website               String?   @db.VarChar(255)
+
+  street                String?   @db.VarChar(255)
+  postalCode            String    @map("postal_code") @db.VarChar(10)
+  city                  String    @db.VarChar(100)
+  latitude              Decimal?  @db.Decimal(10, 8)
+  longitude             Decimal?  @db.Decimal(11, 8)
+
+  industry              String?   @db.VarChar(100)
+  industryTags          Json?     @default("[]") @map("industry_tags")
+
+  description           String?   @db.Text
+  shortDescription      String?   @map("short_description") @db.VarChar(300)
+  foundedYear           Int?      @map("founded_year")
+  employeeCount         String?   @map("employee_count") @db.VarChar(20)
+  logoUrl               String?   @map("logo_url") @db.VarChar(500)
+  coverImageUrl         String?   @map("cover_image_url") @db.VarChar(500)
+
+  trainingSince         Int?      @map("training_since")
+  totalApprentices      Int?      @map("total_apprentices")
+  benefits              Json?     @default("[]")
+
+  verified              Boolean   @default(false)
+  verifiedAt            DateTime? @map("verified_at")
+  taxId                 String?   @map("tax_id") @db.VarChar(50)
+
+  subscriptionPlan      SubscriptionPlan @default(FREE) @map("subscription_plan")
+  subscriptionStatus    SubscriptionStatus? @map("subscription_status")
+  stripeCustomerId      String?   @map("stripe_customer_id") @db.VarChar(100)
+  stripeSubscriptionId  String?   @map("stripe_subscription_id") @db.VarChar(100)
+  paypalSubscriptionId  String?   @map("paypal_subscription_id") @db.VarChar(100)
+  maxJobPosts           Int       @default(1) @map("max_job_posts")
+  maxVideos             Int       @default(0) @map("max_videos")
+
+  status                CompanyStatus @default(PENDING)
+
+  // Multi-Portal (NEU)
+  portalId              Int       @default(1) @map("portal_id")
+  customerId            String?   @map("customer_id")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  // Relations (bestehend)
+  companyUsers          CompanyUser[]
+  jobPosts              JobPost[]
+  videos                Video[]
+  likes                 Like[]
+  companyLikes          CompanyLike[]
+  matches               Match[]
+  chats                 Chat[]
+  subscriptions         Subscription[]
+  events                Event[]
+
+  // Relations (NEU)
+  portal                Portal    @relation(fields: [portalId], references: [id])
+  customer              Customer? @relation(fields: [customerId], references: [id])
+  companyBereiche       CompanyBereich[]
+
+  @@index([postalCode])
+  @@index([status])
+  @@index([slug])
+  @@map("companies")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANY_USERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model CompanyUser {
+  id                    String    @id @default(uuid())
+  companyId             String    @map("company_id")
+
+  email                 String
+  passwordHash          String    @map("password_hash")
+
+  firstName             String?   @map("first_name") @db.VarChar(100)
+  lastName              String?   @map("last_name") @db.VarChar(100)
+  role                  String    @default("member") @db.VarChar(50)
+
+  canEditProfile        Boolean   @default(false) @map("can_edit_profile")
+  canManageJobs         Boolean   @default(true) @map("can_manage_jobs")
+  canChat               Boolean   @default(true) @map("can_chat")
+  canManageTeam         Boolean   @default(false) @map("can_manage_team")
+  canManageBilling      Boolean   @default(false) @map("can_manage_billing")
+
+  emailVerified         Boolean   @default(false) @map("email_verified")
+  emailVerifyToken      String?   @map("email_verify_token")
+
+  passwordResetToken    String?   @map("password_reset_token")
+  passwordResetExpires  DateTime? @map("password_reset_expires")
+
+  refreshToken          String?   @map("refresh_token") @db.Text
+
+  invitedAt             DateTime? @map("invited_at")
+  joinedAt              DateTime? @map("joined_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  lastLoginAt           DateTime? @map("last_login_at")
+
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyLikes          CompanyLike[]
+  messages              Message[] @relation("CompanyUserMessages")
+  notifications         Notification[]
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@map("company_users")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROFESSIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Profession {
+  id                    String    @id @default(uuid())
+
+  code                  String?   @unique @db.VarChar(20)
+  name                  String    @db.VarChar(255)
+  slug                  String    @unique @db.VarChar(100)
+
+  category              String?   @db.VarChar(100)
+  subcategory           String?   @db.VarChar(100)
+  tags                  Json?     @default("[]")
+
+  description           String?   @db.Text
+  shortDescription      String?   @map("short_description") @db.VarChar(300)
+  tasks                 Json?     @default("[]")
+  requirements          Json?     @default("[]")
+  skills                Json?     @default("[]")
+
+  durationMonths        Int?      @map("duration_months")
+  schoolTypeMin         String?   @map("school_type_min") @db.VarChar(50)
+
+  salaryYear1           Int?      @map("salary_year_1")
+  salaryYear2           Int?      @map("salary_year_2")
+  salaryYear3           Int?      @map("salary_year_3")
+  salaryAfter           String?   @map("salary_after") @db.VarChar(50)
+
+  careerPaths           Json?     @default("[]") @map("career_paths")
+
+  iconUrl               String?   @map("icon_url") @db.VarChar(500)
+  imageUrl              String?   @map("image_url") @db.VarChar(500)
+
+  isActive              Boolean   @default(true) @map("is_active")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  jobPosts              JobPost[]
+  videos                Video[]
+
+  @@index([category])
+  @@map("professions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB_POSTS - ERWEITERT
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobPost {
+  id                    String    @id @default(uuid())
+  companyId             String    @map("company_id")
+  professionId          String?   @map("profession_id")
+
+  title                 String    @db.VarChar(255)
+  slug                  String?   @db.VarChar(150)
+
+  description           String?   @db.Text
+  requirements          String?   @db.Text
+  benefits              String?   @db.Text
+
+  startDate             DateTime? @map("start_date") @db.Date
+  durationMonths        Int?      @map("duration_months")
+  positionsAvailable    Int       @default(1) @map("positions_available")
+
+  salaryYear1           Int?      @map("salary_year_1")
+  salaryYear2           Int?      @map("salary_year_2")
+  salaryYear3           Int?      @map("salary_year_3")
+
+  postalCode            String?   @map("postal_code") @db.VarChar(10)
+  city                  String?   @db.VarChar(100)
+  latitude              Decimal?  @db.Decimal(10, 8)
+  longitude             Decimal?  @db.Decimal(11, 8)
+
+  // App-Konzept: Erweiterte Felder
+  beruf                 String?   @db.VarChar(255)
+  anforderungen         Json?     @default("[]")
+  gehalt                Json?
+  arbeitszeit           String?   @db.VarChar(50)
+  dauer                 String?   @db.VarChar(100)
+  remote                Boolean   @default(false)
+  standortAdresse       String?   @map("standort_adresse") @db.VarChar(255)
+  bewerbungsfrist       DateTime?
+  metaTitle             String?   @map("meta_title") @db.VarChar(70)
+  metaDescription       String?   @map("meta_description") @db.VarChar(160)
+
+  showOnWebsite         Boolean   @default(true) @map("show_on_website")
+
+  status                JobStatus @default(DRAFT)
+
+  viewCount             Int       @default(0) @map("view_count")
+  likeCount             Int       @default(0) @map("like_count")
+  matchCount            Int       @default(0) @map("match_count")
+
+  // Multi-Portal (NEU)
+  portalId              Int       @default(1) @map("portal_id")
+
+  publishedAt           DateTime? @map("published_at")
+  expiresAt             DateTime? @map("expires_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relations (bestehend)
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profession            Profession? @relation(fields: [professionId], references: [id])
+  videos                Video[]
+  likes                 Like[]
+  matches               Match[]
+  companyLikes          CompanyLike[]
+
+  // Relations (NEU)
+  portal                Portal    @relation(fields: [portalId], references: [id])
+  videoJobPosts         VideoJobPost[]
+
+  @@index([companyId])
+  @@index([professionId])
+  @@index([status])
+  @@map("job_posts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VIDEOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Video {
+  id                    String    @id @default(uuid())
+  companyId             String    @map("company_id")
+  jobPostId             String?   @map("job_post_id")
+  professionId          String?   @map("profession_id")
+
+  title                 String?   @db.VarChar(255)
+  description           String?   @db.Text
+
+  filename              String    @db.VarChar(255)
+  filepath              String    @db.VarChar(500)
+  filesize              Int?
+  mimeType              String?   @map("mime_type") @db.VarChar(50)
+
+  processedPath         String?   @map("processed_path") @db.VarChar(500)
+  thumbnailPath         String?   @map("thumbnail_path") @db.VarChar(500)
+
+  durationSeconds       Int?      @map("duration_seconds")
+  width                 Int?
+  height                Int?
+
+  videoType             String?   @map("video_type") @db.VarChar(50)
+  featuredPerson        String?   @map("featured_person") @db.VarChar(100)
+
+  status                VideoStatus @default(PROCESSING)
+  moderationNote        String?   @map("moderation_note") @db.Text
+
+  viewCount             Int       @default(0) @map("view_count")
+  likeCount             Int       @default(0) @map("like_count")
+  shareCount            Int       @default(0) @map("share_count")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  publishedAt           DateTime? @map("published_at")
+
+  // Moderation (NEU - App-Konzept)
+  moderationStatus      ModerationStatus @default(PENDING) @map("moderation_status")
+
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobPost               JobPost?  @relation(fields: [jobPostId], references: [id])
+  profession            Profession? @relation(fields: [professionId], references: [id])
+  likes                 Like[]
+
+  // M2M: Video kann mehreren Stellen zugeordnet sein (NEU - App-Konzept)
+  videoJobPosts         VideoJobPost[]
+
+  @@index([companyId])
+  @@index([status])
+  @@map("videos")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VIDEO_JOB_POSTS (Many-to-Many: Video ↔ JobPost) - NEU App-Konzept
+// ═══════════════════════════════════════════════════════════════════════════
+
+model VideoJobPost {
+  id          String   @id @default(uuid())
+  videoId     String   @map("video_id")
+  jobPostId   String   @map("job_post_id")
+
+  // Reihenfolge (welches Video zuerst bei der Stelle?)
+  position    Int      @default(0)
+
+  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  jobPost     JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, jobPostId])
+  @@map("video_job_posts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIKES
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Like {
+  id                    String    @id @default(uuid())
+  userId                String    @map("user_id")
+
+  companyId             String?   @map("company_id")
+  jobPostId             String?   @map("job_post_id")
+  videoId               String?   @map("video_id")
+
+  source                String?   @db.VarChar(50)
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company               Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobPost               JobPost?  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  video                 Video?    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@unique([userId, jobPostId])
+  @@unique([userId, videoId])
+  @@index([userId])
+  @@index([companyId])
+  @@map("likes")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANY_LIKES
+// ═══════════════════════════════════════════════════════════════════════════
+
+model CompanyLike {
+  id                    String    @id @default(uuid())
+  companyId             String    @map("company_id")
+  userId                String    @map("user_id")
+  jobPostId             String?   @map("job_post_id")
+
+  likedById             String?   @map("liked_by_id")
+  note                  String?   @db.Text
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobPost               JobPost?  @relation(fields: [jobPostId], references: [id])
+  likedBy               CompanyUser? @relation(fields: [likedById], references: [id])
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("company_likes")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MATCHES
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Match {
+  id                    String    @id @default(uuid())
+  userId                String    @map("user_id")
+  companyId             String    @map("company_id")
+  jobPostId             String?   @map("job_post_id")
+
+  initiatedBy           String?   @map("initiated_by") @db.VarChar(10)
+
+  status                MatchStatus @default(ACTIVE)
+
+  // App-Konzept: Erweiterte Match-Felder
+  userLikedFirst        Boolean?  @map("user_liked_first")
+  userLikedAt           DateTime? @map("user_liked_at")
+  companyLikedAt        DateTime? @map("company_liked_at")
+
+  matchedAt             DateTime  @default(now()) @map("matched_at")
+  expiredAt             DateTime? @map("expired_at")
+
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobPost               JobPost?  @relation(fields: [jobPostId], references: [id])
+  chat                  Chat?
+
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+  @@map("matches")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHATS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Chat {
+  id                    String    @id @default(uuid())
+  matchId               String    @unique @map("match_id")
+  userId                String    @map("user_id")
+  companyId             String    @map("company_id")
+
+  isActive              Boolean   @default(true) @map("is_active")
+
+  lastMessageAt         DateTime? @map("last_message_at")
+  lastMessagePreview    String?   @map("last_message_preview") @db.VarChar(200)
+
+  userUnreadCount       Int       @default(0) @map("user_unread_count")
+  companyUnreadCount    Int       @default(0) @map("company_unread_count")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  match                 Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user                  User      @relation(fields: [userId], references: [id])
+  company               Company   @relation(fields: [companyId], references: [id])
+  messages              Message[]
+
+  @@index([userId])
+  @@index([companyId])
+  @@map("chats")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MESSAGES
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Message {
+  id                    String    @id @default(uuid())
+  chatId                String    @map("chat_id")
+
+  senderType            String    @map("sender_type") @db.VarChar(10)
+  senderUserId          String?   @map("sender_user_id")
+  senderCompanyUserId   String?   @map("sender_company_user_id")
+
+  content               String    @db.Text
+  messageType           MessageType @default(TEXT) @map("message_type")
+
+  attachmentUrl         String?   @map("attachment_url") @db.VarChar(500)
+  attachmentType        String?   @map("attachment_type") @db.VarChar(50)
+  attachmentName        String?   @map("attachment_name") @db.VarChar(255)
+
+  isRead                Boolean   @default(false) @map("is_read")
+  readAt                DateTime? @map("read_at")
+  isDeleted             Boolean   @default(false) @map("is_deleted")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  editedAt              DateTime? @map("edited_at")
+
+  chat                  Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderUser            User?     @relation("UserMessages", fields: [senderUserId], references: [id])
+  senderCompanyUser     CompanyUser? @relation("CompanyUserMessages", fields: [senderCompanyUserId], references: [id])
+
+  @@index([chatId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBSCRIPTIONS - ERWEITERT
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Subscription {
+  id                    String    @id @default(uuid())
+  companyId             String    @map("company_id")
+
+  plan                  SubscriptionPlan
+  status                SubscriptionStatus
+
+  stripeSubscriptionId  String?   @map("stripe_subscription_id") @db.VarChar(100)
+  stripePriceId         String?   @map("stripe_price_id") @db.VarChar(100)
+
+  priceMonthly          Decimal?  @map("price_monthly") @db.Decimal(10, 2)
+  currency              String    @default("EUR") @db.VarChar(3)
+
+  currentPeriodStart    DateTime? @map("current_period_start")
+  currentPeriodEnd      DateTime? @map("current_period_end")
+  trialEnd              DateTime? @map("trial_end")
+
+  cancelAt              DateTime? @map("cancel_at")
+  canceledAt            DateTime? @map("canceled_at")
+
+  // Multi-Portal (NEU)
+  portalId              Int       @default(1) @map("portal_id")
+  customerId            String?   @map("customer_id")
+
+  // PayPal (NEU)
+  paypalSubscriptionId  String?   @map("paypal_subscription_id") @db.VarChar(100)
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relations (bestehend)
+  company               Company   @relation(fields: [companyId], references: [id])
+
+  // Relations (NEU)
+  portal                Portal    @relation(fields: [portalId], references: [id])
+  customer              Customer? @relation(fields: [customerId], references: [id])
+  companyBereiche       CompanyBereich[]
+
+  @@index([companyId])
+  @@map("subscriptions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Notification {
+  id                    String    @id @default(uuid())
+
+  userId                String?   @map("user_id")
+  companyUserId         String?   @map("company_user_id")
+
+  type                  NotificationType
+  title                 String    @db.VarChar(255)
+  body                  String?   @db.Text
+
+  referenceType         String?   @map("reference_type") @db.VarChar(50)
+  referenceId           String?   @map("reference_id")
+
+  isRead                Boolean   @default(false) @map("is_read")
+  readAt                DateTime? @map("read_at")
+
+  pushSent              Boolean   @default(false) @map("push_sent")
+  pushSentAt            DateTime? @map("push_sent_at")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  user                  User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyUser           CompanyUser? @relation(fields: [companyUserId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([companyUserId])
+  @@map("notifications")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI_CONVERSATIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model AiConversation {
+  id                    String    @id @default(uuid())
+  userId                String?   @map("user_id")
+  sessionId             String?   @map("session_id") @db.VarChar(100)
+
+  messages              Json      @default("[]")
+  suggestedProfessions  Json?     @map("suggested_professions")
+
+  completed             Boolean   @default(false)
+  questionCount         Int       @default(0) @map("question_count")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  user                  User?     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("ai_conversations")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENTS (Analytics)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Event {
+  id                    String    @id @default(uuid())
+
+  userId                String?   @map("user_id")
+  companyId             String?   @map("company_id")
+  sessionId             String?   @map("session_id") @db.VarChar(100)
+
+  eventType             String    @map("event_type") @db.VarChar(100)
+  properties            Json?     @default("{}")
+
+  platform              String?   @db.VarChar(20)
+  appVersion            String?   @map("app_version") @db.VarChar(20)
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  user                  User?     @relation(fields: [userId], references: [id])
+  company               Company?  @relation(fields: [companyId], references: [id])
+
+  @@index([eventType])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("events")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADMIN_USERS - ERWEITERT
+// ═══════════════════════════════════════════════════════════════════════════
+
+model AdminUser {
+  id                    String    @id @default(uuid())
+
+  email                 String    @unique
+  passwordHash          String    @map("password_hash")
+  name                  String?   @db.VarChar(255)
+  role                  String    @default("support") @db.VarChar(50)
+
+  // Erweiterte Felder (NEU)
+  firstName             String?   @map("first_name") @db.VarChar(100)
+  lastName              String?   @map("last_name") @db.VarChar(100)
+  avatarUrl             String?   @map("avatar_url") @db.VarChar(500)
+
+  // Portal-Zugriff (null = alle Portale)
+  portalAccess          Json?     @map("portal_access")
+
+  permissions           Json?     @default("{}")
+
+  refreshToken          String?   @map("refresh_token") @db.Text
+
+  // Status (NEU)
+  isActive              Boolean   @default(true) @map("is_active")
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+  lastLoginAt           DateTime? @map("last_login_at")
+
+  // Relations (NEU)
+  auditLogs             AuditLog[]
+
+  @@map("admin_users")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EMAIL LOG
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum EmailStatus {
+  SENT
+  FAILED
+  BOUNCED
+  DELIVERED
+}
+
+model EmailLog {
+  id          String      @id @default(uuid())
+
+  to          String      @db.VarChar(255)
+  template    String      @db.VarChar(100)
+  subject     String      @db.VarChar(500)
+
+  status      EmailStatus @default(SENT)
+  messageId   String?     @map("message_id") @db.VarChar(500)
+  error       String?     @db.Text
+
+  portalId    Int?        @map("portal_id")
+
+  sentAt      DateTime    @default(now()) @map("sent_at")
+
+  @@index([to])
+  @@index([template])
+  @@index([sentAt])
+  @@map("email_logs")
+}

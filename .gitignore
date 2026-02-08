@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.next
+uploads
+/generated/prisma
+email-previews
+.php-ini
+.php-version
