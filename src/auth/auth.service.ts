@@ -151,18 +151,14 @@ export class AuthService {
       .catch(() => {});
 
     // Send admin notification email (non-blocking)
-    const adminEmail = this.configService.get<string>('ADMIN_NOTIFICATION_EMAIL');
-    if (adminEmail) {
-      this.emailService
-        .sendAdminNewRegistrationEmail(
-          adminEmail,
-          dto.companyName,
-          dto.email,
-          dto.city || '',
-          'FREE',
-        )
-        .catch(() => {});
-    }
+    this.emailService
+      .sendAdminNewRegistrationEmail(
+        dto.companyName,
+        dto.email,
+        dto.city || '',
+        'FREE',
+      )
+      .catch(() => {});
 
     return {
       user: {

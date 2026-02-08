@@ -1,7 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   baseTemplate,
@@ -12,68 +10,36 @@ import {
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: Transporter | null = null;
-  private fromAddress: string;
-  private appUrl: string;
-  private frontendUrl: string;
-  private dashboardUrl: string;
+  private readonly brevoApiKey: string;
+  private readonly fromEmail: string;
+  private readonly fromName: string;
+  private readonly replyTo: string;
+  private readonly adminEmail: string;
+  private readonly appUrl: string;
+  private readonly frontendUrl: string;
+  private readonly dashboardUrl: string;
 
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
   ) {
-    this.fromAddress =
-      this.configService.get('SMTP_FROM') || 'noreply@genieportal.de';
-    this.appUrl =
-      this.configService.get('APP_URL') || 'https://api.genieportal.de';
-    this.frontendUrl =
-      this.configService.get('FRONTEND_URL') || 'https://genieportal.de';
-    this.dashboardUrl =
-      this.configService.get('DASHBOARD_URL') || 'https://dashboard.genieportal.de';
+    this.brevoApiKey = this.configService.get('BREVO_API_KEY') || '';
+    this.fromEmail = this.configService.get('EMAIL_FROM') || 'noreply@genieportal.de';
+    this.fromName = this.configService.get('EMAIL_FROM_NAME') || 'Genieportal';
+    this.replyTo = this.configService.get('EMAIL_REPLY_TO') || 'support@genieportal.de';
+    this.adminEmail = this.configService.get('ADMIN_NOTIFICATION_EMAIL') || 'amali+genieportal@butterflies-it.de';
+    this.appUrl = this.configService.get('APP_URL') || 'https://api.genieportal.de';
+    this.frontendUrl = this.configService.get('FRONTEND_URL') || 'https://genieportal.de';
+    this.dashboardUrl = this.configService.get('DASHBOARD_URL') || 'https://dashboard.genieportal.de';
 
-    this.initTransporter();
+    if (!this.brevoApiKey) {
+      this.logger.warn('BREVO_API_KEY ist nicht konfiguriert – E-Mails werden nicht versendet.');
+    } else {
+      this.logger.log('Brevo API konfiguriert – E-Mail-Versand aktiv');
+    }
   }
 
-  // ─── TRANSPORTER SETUP ──────────────────────────────────────────────────────
-
-  private initTransporter(): void {
-    const host = this.configService.get<string>('SMTP_HOST');
-    const port = this.configService.get<number>('SMTP_PORT');
-
-    if (!host) {
-      this.logger.warn(
-        'SMTP_HOST ist nicht konfiguriert – E-Mails werden nicht versendet.',
-      );
-      return;
-    }
-
-    const user = this.configService.get<string>('SMTP_USER');
-    const pass = this.configService.get<string>('SMTP_PASS');
-
-    const transportOptions: nodemailer.TransportOptions & Record<string, any> = {
-      host,
-      port: port || 587,
-      secure: port === 465,
-    };
-
-    // Only attach auth when credentials are present
-    if (user && pass) {
-      transportOptions.auth = { user, pass };
-    }
-
-    this.transporter = nodemailer.createTransport(transportOptions);
-
-    this.transporter.verify().then(() => {
-      this.logger.log('SMTP-Verbindung erfolgreich hergestellt');
-    }).catch((err) => {
-      this.logger.warn(
-        `SMTP-Verbindung fehlgeschlagen: ${err.message}. E-Mails werden nicht versendet.`,
-      );
-      this.transporter = null;
-    });
-  }
-
-  // ─── CORE SEND METHOD ───────────────────────────────────────────────────────
+  // ─── CORE SEND METHOD (Brevo HTTP API) ────────────────────────────────────
 
   private async send(
     to: string,
@@ -81,23 +47,41 @@ export class EmailService {
     html: string,
     template = 'unknown',
   ): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.brevoApiKey) {
       this.logger.warn(
-        `E-Mail an ${to} konnte nicht versendet werden (SMTP nicht konfiguriert): ${subject}`,
+        `E-Mail an ${to} konnte nicht versendet werden (Brevo API Key fehlt): ${subject}`,
       );
-      this.logEmail(to, template, subject, 'FAILED', undefined, 'SMTP nicht konfiguriert').catch(() => {});
+      this.logEmail(to, template, subject, 'FAILED', undefined, 'Brevo API Key nicht konfiguriert').catch(() => {});
       return false;
     }
 
     try {
-      const result = await this.transporter.sendMail({
-        from: `"Genie" <${this.fromAddress}>`,
-        to,
-        subject,
-        html,
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': this.brevoApiKey,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: this.fromName, email: this.fromEmail },
+          to: [{ email: to }],
+          replyTo: { email: this.replyTo },
+          subject,
+          htmlContent: html,
+        }),
       });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Brevo API ${response.status}: ${errorBody}`);
+      }
+
+      const result = await response.json();
+      const messageId = result.messageId || result.messageIds?.[0] || undefined;
+
       this.logger.log(`E-Mail versendet an ${to}: ${subject}`);
-      this.logEmail(to, template, subject, 'SENT', result.messageId).catch(() => {});
+      this.logEmail(to, template, subject, 'SENT', messageId).catch(() => {});
       return true;
     } catch (error) {
       this.logger.error(
@@ -454,11 +438,6 @@ export class EmailService {
     planName: string,
     price: string,
   ): Promise<boolean> {
-    const dashboardUrl = this.configService.get<string>(
-      'DASHBOARD_URL',
-      'https://dashboard.genieportal.de',
-    );
-
     const html = this.wrap(
       [
         this.heading('Zahlung erfolgreich &#9989;'),
@@ -471,7 +450,7 @@ export class EmailService {
         this.paragraph(
           'Ihr Plan ist ab sofort aktiv. Sie k&ouml;nnen jetzt alle Funktionen Ihres Plans nutzen.',
         ),
-        ctaButton('Zum Dashboard', dashboardUrl),
+        ctaButton('Zum Dashboard', this.dashboardUrl),
         this.infoBox(
           'Sie k&ouml;nnen Ihr Abonnement jederzeit in den Einstellungen verwalten oder k&uuml;ndigen.',
         ),
@@ -490,11 +469,6 @@ export class EmailService {
     companyName: string,
     planName: string,
   ): Promise<boolean> {
-    const dashboardUrl = this.configService.get<string>(
-      'DASHBOARD_URL',
-      'https://dashboard.genieportal.de',
-    );
-
     const html = this.wrap(
       [
         this.heading('Zahlung fehlgeschlagen'),
@@ -506,9 +480,9 @@ export class EmailService {
         this.paragraph(
           'Bitte &uuml;berpr&uuml;fen Sie Ihre Zahlungsmethode in den Einstellungen. ' +
           'Falls das Problem weiterhin besteht, kontaktieren Sie uns unter ' +
-          '<a href="mailto:kontakt@genieportal.de" style="color:#6366F1;">kontakt@genieportal.de</a>.',
+          `<a href="mailto:${this.replyTo}" style="color:#6366F1;">${this.replyTo}</a>.`,
         ),
-        ctaButton('Zahlungsmethode pr&uuml;fen', `${dashboardUrl}/settings`),
+        ctaButton('Zahlungsmethode pr&uuml;fen', `${this.dashboardUrl}/settings`),
         this.infoBox(
           'Ihr Zugang bleibt vorerst bestehen. Bitte aktualisieren Sie Ihre Zahlungsmethode innerhalb von 7 Tagen.',
         ),
@@ -523,7 +497,6 @@ export class EmailService {
   // ─── ADMIN NEW REGISTRATION EMAIL ────────────────────────────────────────────
 
   async sendAdminNewRegistrationEmail(
-    to: string,
     companyName: string,
     companyEmail: string,
     city: string,
@@ -557,7 +530,7 @@ export class EmailService {
       `Neue Registrierung: ${companyName}`,
     );
 
-    return this.send(to, `Neue Registrierung: ${companyName}`, html, 'admin-new-registration');
+    return this.send(this.adminEmail, `Neue Registrierung: ${companyName}`, html, 'admin-new-registration');
   }
 
   // ─── PASSWORD CHANGED EMAIL ─────────────────────────────────────────────────
@@ -575,7 +548,7 @@ export class EmailService {
         ),
         this.infoBox(
           'Falls du diese &Auml;nderung nicht selbst vorgenommen hast, kontaktiere uns bitte sofort unter ' +
-          '<a href="mailto:kontakt@genieportal.de" style="color:#4338CA;">kontakt@genieportal.de</a>.',
+          `<a href="mailto:${this.replyTo}" style="color:#4338CA;">${this.replyTo}</a>.`,
         ),
         this.signature(),
       ].join('\n'),
@@ -704,7 +677,6 @@ export class EmailService {
   // ─── ADMIN: VIDEO MODERATION EMAIL ────────────────────────────────────────
 
   async sendAdminVideoModerationEmail(
-    to: string,
     companyName: string,
     videoTitle: string,
   ): Promise<boolean> {
@@ -724,7 +696,50 @@ export class EmailService {
       `Video von ${companyName} wartet auf Moderation`,
     );
 
-    return this.send(to, `Video-Moderation: ${companyName}`, html, 'admin-video-moderation');
+    return this.send(this.adminEmail, `Video-Moderation: ${companyName}`, html, 'admin-video-moderation');
+  }
+
+  // ─── CONTACT FORM EMAIL ───────────────────────────────────────────────────
+
+  async sendContactFormEmail(
+    senderName: string,
+    senderEmail: string,
+    subject: string,
+    message: string,
+    portal?: string,
+  ): Promise<boolean> {
+    const html = this.wrap(
+      [
+        this.heading('Neue Kontaktanfrage'),
+        this.paragraph('Hallo Admin,'),
+        this.paragraph(
+          'Es ist eine neue Kontaktanfrage eingegangen:',
+        ),
+        `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+               style="margin:0 0 24px;background-color:#F9FAFB;border-radius:12px;border:1px solid #E5E7EB;">
+          <tr>
+            <td style="padding:20px;">
+              <p style="margin:0 0 8px;font-size:14px;color:#6B7280;">Name</p>
+              <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#1F2937;">${this.escapeHtml(senderName)}</p>
+              <p style="margin:0 0 8px;font-size:14px;color:#6B7280;">E-Mail</p>
+              <p style="margin:0 0 16px;font-size:16px;color:#1F2937;">
+                <a href="mailto:${this.escapeHtml(senderEmail)}" style="color:#6366F1;">${this.escapeHtml(senderEmail)}</a>
+              </p>
+              ${portal ? `<p style="margin:0 0 8px;font-size:14px;color:#6B7280;">Portal</p>
+              <p style="margin:0 0 16px;font-size:16px;color:#1F2937;">${this.escapeHtml(portal)}</p>` : ''}
+              <p style="margin:0 0 8px;font-size:14px;color:#6B7280;">Betreff</p>
+              <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#1F2937;">${this.escapeHtml(subject)}</p>
+              <p style="margin:0 0 8px;font-size:14px;color:#6B7280;">Nachricht</p>
+              <p style="margin:0;font-size:15px;line-height:24px;color:#1F2937;white-space:pre-wrap;">${this.escapeHtml(message)}</p>
+            </td>
+          </tr>
+        </table>`,
+        this.signature(),
+      ].join('\n'),
+      `Kontaktanfrage von ${senderName}`,
+    );
+
+    return this.send(this.adminEmail, `Kontaktanfrage: ${subject}`, html, 'contact-form');
   }
 
   // ─── UTILITIES ──────────────────────────────────────────────────────────────
