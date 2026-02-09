@@ -122,6 +122,135 @@ enum InvoiceStatus {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PREMIUM FEATURES ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum AlertFrequency {
+  INSTANT
+  DAILY
+  WEEKLY
+}
+
+enum ReviewerType {
+  AZUBI
+  MITARBEITER
+  PRAKTIKANT
+  BEWERBER
+}
+
+enum ReviewStatus {
+  REVIEW_PENDING
+  APPROVED
+  REVIEW_REJECTED
+  REPORTED
+}
+
+enum SalaryType {
+  HOURLY
+  MONTHLY
+  YEARLY
+}
+
+enum SalarySource {
+  JOB_POST
+  USER_SUBMITTED
+  OFFICIAL
+}
+
+enum ViewSource {
+  APP
+  WEBSITE_SOURCE
+  GOOGLE
+  COMPANY_WEBSITE
+  API_SOURCE
+  EMAIL_SOURCE
+}
+
+enum ClickType {
+  APPLY_BUTTON
+  COMPANY_PROFILE
+  VIDEO_PLAY
+  CONTACT
+  WEBSITE_LINK
+}
+
+enum InterviewType {
+  IN_PERSON
+  VIDEO_CALL
+  PHONE
+}
+
+enum InterviewStatus {
+  INTERVIEW_PENDING
+  CONFIRMED
+  INTERVIEW_COMPLETED
+  INTERVIEW_CANCELLED
+  NO_SHOW
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KI-FEATURES & FIRMEN-TOOLS ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum BoostType {
+  BOOST
+  SPOTLIGHT
+}
+
+enum BoostStatus {
+  BOOST_PENDING
+  BOOST_ACTIVE
+  BOOST_EXPIRED
+  BOOST_CANCELLED
+}
+
+enum TalentSource {
+  FROM_MATCH
+  FROM_APPLICATION
+  FROM_SEARCH
+  MANUAL
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GAMIFICATION ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum AchievementCategory {
+  PROFIL
+  AKTIVITAET
+  MATCHES_CAT
+  KOMMUNIKATION
+  BEWERBUNGEN
+  STREAKS
+  SPEZIAL
+}
+
+enum AchievementRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOCIAL ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum FriendshipStatus {
+  FRIENDSHIP_PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum VideoVisibility {
+  VIS_PUBLIC
+  MATCHES_ONLY
+  APPLICATIONS_ONLY
+  VIS_PRIVATE
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PORTALS (Alle Genie-Portale) - NEU
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -446,6 +575,20 @@ model User {
   // Multi-Portal (NEU)
   portalId              Int        @default(1) @map("portal_id")
 
+  // Gamification
+  xp                    Int        @default(0)
+  level                 Int        @default(1)
+  currentStreak         Int        @default(0) @map("current_streak")
+  longestStreak         Int        @default(0) @map("longest_streak")
+  lastStreakDate        DateTime?  @map("last_streak_date") @db.Date
+
+  // Bewerber-Video
+  videoUrl              String?    @map("video_url") @db.VarChar(500)
+  videoStoragePath      String?    @map("video_storage_path") @db.VarChar(500)
+  videoThumbnail        String?    @map("video_thumbnail") @db.VarChar(500)
+  videoDuration         Int?       @map("video_duration")
+  videoVisibility       VideoVisibility @default(VIS_PUBLIC) @map("video_visibility")
+
   // Timestamps
   createdAt             DateTime   @default(now()) @map("created_at")
   updatedAt             DateTime   @updatedAt @map("updated_at")
@@ -465,6 +608,24 @@ model User {
   // Relations (NEU)
   portal                Portal     @relation(fields: [portalId], references: [id])
   userBereiche          UserBereich[]
+
+  // Premium & Social Relations
+  jobAlerts             JobAlert[]
+  companyReviews        CompanyReview[]
+  reviewHelpfuls        ReviewHelpful[]
+  companyFollows        CompanyFollow[]
+  salarySubmissions     SalaryData[]
+  jobPostViews          JobPostView[]
+  jobPostClicks         JobPostClick[]
+  careerFinderResults   CareerFinderResult[]
+  userAchievements      UserAchievement[]
+  friendshipsSent       Friendship[]          @relation("FriendshipSender")
+  friendshipsReceived   Friendship[]          @relation("FriendshipReceiver")
+  recommendationsSent   JobRecommendation[]   @relation("RecommendationSender")
+  recommendationsReceived JobRecommendation[] @relation("RecommendationReceiver")
+  referralCodes         ReferralCode[]
+  skillTestResults      SkillTestResult[]
+  talentPools           TalentPool[]
 
   @@index([postalCode])
   @@index([status])
@@ -526,6 +687,11 @@ model Company {
   portalId              Int       @default(1) @map("portal_id")
   customerId            String?   @map("customer_id")
 
+  // Bewertungs-Aggregate
+  reviewCount           Int       @default(0) @map("review_count")
+  reviewAverage         Decimal   @default(0) @map("review_average") @db.Decimal(3, 2)
+  recommendPercent      Int       @default(0) @map("recommend_percent")
+
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at")
@@ -553,6 +719,18 @@ model Company {
   applicationFormConfig ApplicationFormConfig?
   apiKeys               ApiKey[]
   webhooks              Webhook[]
+
+  // Premium & Social Relations
+  companyReviews        CompanyReview[]
+  companyFollowers      CompanyFollow[]
+  salaryData            SalaryData[]
+  salaryStatistics      SalaryStatistics[]
+  jobPostViews          JobPostView[]
+  jobPostClicks         JobPostClick[]
+  interviewSlots        InterviewSlot[]
+  interviews            Interview[]
+  jobBoosts             JobBoost[]
+  talentPools           TalentPool[]
 
   @@index([postalCode])
   @@index([status])
@@ -721,6 +899,13 @@ model JobPost {
   videoJobPosts         VideoJobPost[]
   applications          Application[]
   publishedPortals      JobPostPortal[]
+
+  // Premium Relations
+  jobPostViews          JobPostView[]
+  jobPostClicks         JobPostClick[]
+  jobBoosts             JobBoost[]
+  interviews            Interview[]
+  interviewSlots        InterviewSlot[]
 
   @@index([companyId])
   @@index([professionId])
@@ -1330,6 +1515,7 @@ model Application {
   jobPost               JobPost           @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
   company               Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   documents             ApplicationDocument[]
+  interviews            Interview[]
 
   @@index([companyId])
   @@index([jobPostId])
@@ -1462,4 +1648,565 @@ model Webhook {
 
   @@index([companyId])
   @@map("webhooks")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB_ALERT (Job-Benachrichtigungen) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobAlert {
+  id                String         @id @default(uuid())
+  userId            String?        @map("user_id")
+  email             String         @db.VarChar(255)
+
+  name              String?        @db.VarChar(100)
+
+  // Suchfilter
+  keywords          String?        @db.VarChar(255)
+  professionIds     Json?          @map("profession_ids")
+  bereich           String?        @db.VarChar(50)
+  postalCode        String?        @map("postal_code") @db.VarChar(10)
+  city              String?        @db.VarChar(100)
+  radiusKm          Int?           @default(50) @map("radius_km")
+  remote            Boolean?
+
+  frequency         AlertFrequency @default(DAILY)
+  isActive          Boolean        @default(true) @map("is_active")
+  isVerified        Boolean        @default(false) @map("is_verified")
+  verifyToken       String?        @map("verify_token") @db.VarChar(100)
+  unsubscribeToken  String         @map("unsubscribe_token") @db.VarChar(100)
+
+  lastSentAt        DateTime?      @map("last_sent_at")
+  sentCount         Int            @default(0) @map("sent_count")
+  matchCount        Int            @default(0) @map("match_count")
+
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  user              User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email])
+  @@index([isActive, frequency])
+  @@map("job_alerts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANY_REVIEW (Arbeitgeber-Bewertungen) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model CompanyReview {
+  id                String       @id @default(uuid())
+  companyId         String       @map("company_id")
+  userId            String       @map("user_id")
+
+  // Bewertung (1-5 Sterne)
+  overallRating     Int          @map("overall_rating")
+  cultureRating     Int?         @map("culture_rating")
+  tasksRating       Int?         @map("tasks_rating")
+  supervisorRating  Int?         @map("supervisor_rating")
+  salaryRating      Int?         @map("salary_rating")
+
+  title             String       @db.VarChar(200)
+  pros              String       @db.Text
+  cons              String       @db.Text
+
+  reviewerType      ReviewerType
+  department        String?      @db.VarChar(100)
+  isAnonymous       Boolean      @default(true) @map("is_anonymous")
+  wouldRecommend    Boolean      @default(true) @map("would_recommend")
+
+  status            ReviewStatus @default(REVIEW_PENDING)
+  moderationNote    String?      @map("moderation_note") @db.Text
+
+  helpfulCount      Int          @default(0) @map("helpful_count")
+
+  // Firmen-Antwort
+  companyResponse    String?     @map("company_response") @db.Text
+  companyRespondedAt DateTime?   @map("company_responded_at")
+
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  company           Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  helpfuls          ReviewHelpful[]
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@index([status])
+  @@map("company_reviews")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REVIEW_HELPFUL (Bewertung hilfreich) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ReviewHelpful {
+  id          String        @id @default(uuid())
+  reviewId    String        @map("review_id")
+  userId      String        @map("user_id")
+
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  review      CompanyReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@map("review_helpfuls")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANY_FOLLOW (Firmen folgen) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model CompanyFollow {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  companyId   String   @map("company_id")
+
+  notify      Boolean  @default(true)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@map("company_follows")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SALARY_DATA (Gehaltsdaten) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model SalaryData {
+  id              String       @id @default(uuid())
+  companyId       String?      @map("company_id")
+  userId          String?      @map("user_id")
+
+  professionName  String       @map("profession_name") @db.VarChar(255)
+  postalCode      String?      @map("postal_code") @db.VarChar(10)
+  city            String?      @db.VarChar(100)
+  region          String?      @db.VarChar(100)
+
+  salaryType      SalaryType   @default(MONTHLY) @map("salary_type")
+  amount          Decimal      @db.Decimal(10, 2)
+  year            Int?
+
+  source          SalarySource @default(USER_SUBMITTED)
+  isVerified      Boolean      @default(false) @map("is_verified")
+
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  company         Company?     @relation(fields: [companyId], references: [id])
+  user            User?        @relation(fields: [userId], references: [id])
+
+  @@index([professionName])
+  @@index([city])
+  @@map("salary_data")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SALARY_STATISTICS (Gehalts-Aggregate pro Beruf/Region) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model SalaryStatistics {
+  id              String   @id @default(uuid())
+  companyId       String?  @map("company_id")
+
+  professionName  String   @map("profession_name") @db.VarChar(255)
+  region          String?  @db.VarChar(100)
+
+  sampleCount     Int      @default(0) @map("sample_count")
+  minSalary       Decimal  @default(0) @map("min_salary") @db.Decimal(10, 2)
+  maxSalary       Decimal  @default(0) @map("max_salary") @db.Decimal(10, 2)
+  avgSalary       Decimal  @default(0) @map("avg_salary") @db.Decimal(10, 2)
+  medianSalary    Decimal  @default(0) @map("median_salary") @db.Decimal(10, 2)
+
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  company         Company? @relation(fields: [companyId], references: [id])
+
+  @@unique([professionName, region])
+  @@map("salary_statistics")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB_POST_VIEW (Stellen-Aufrufe) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobPostView {
+  id          String     @id @default(uuid())
+  jobPostId   String     @map("job_post_id")
+  companyId   String     @map("company_id")
+  userId      String?    @map("user_id")
+
+  source      ViewSource @default(WEBSITE_SOURCE)
+  sessionId   String?    @map("session_id") @db.VarChar(100)
+  ip          String?    @db.VarChar(45)
+  userAgent   String?    @map("user_agent") @db.VarChar(500)
+  referer     String?    @db.VarChar(500)
+
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  jobPost     JobPost    @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?      @relation(fields: [userId], references: [id])
+
+  @@index([jobPostId])
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("job_post_views")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB_POST_CLICK (Stellen-Klicks) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobPostClick {
+  id          String    @id @default(uuid())
+  jobPostId   String    @map("job_post_id")
+  companyId   String    @map("company_id")
+  userId      String?   @map("user_id")
+
+  clickType   ClickType
+  sessionId   String?   @map("session_id") @db.VarChar(100)
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  jobPost     JobPost   @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id])
+
+  @@index([jobPostId])
+  @@index([companyId])
+  @@index([createdAt])
+  @@map("job_post_clicks")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTERVIEW_SLOT (Zeitfenster für Interviews) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model InterviewSlot {
+  id            String    @id @default(uuid())
+  companyId     String    @map("company_id")
+  jobPostId     String?   @map("job_post_id")
+
+  date          DateTime  @db.Date
+  startTime     String    @map("start_time") @db.VarChar(5)
+  endTime       String    @map("end_time") @db.VarChar(5)
+
+  durationMin   Int       @default(30) @map("duration_min")
+
+  isBooked      Boolean   @default(false) @map("is_booked")
+  isActive      Boolean   @default(true) @map("is_active")
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobPost       JobPost?  @relation(fields: [jobPostId], references: [id])
+  interview     Interview?
+
+  @@index([companyId])
+  @@index([date])
+  @@map("interview_slots")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTERVIEW (Interview-Termine) - Premium Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Interview {
+  id              String          @id @default(uuid())
+  slotId          String          @unique @map("slot_id")
+  applicationId   String          @map("application_id")
+  companyId       String          @map("company_id")
+  jobPostId       String?         @map("job_post_id")
+
+  type            InterviewType   @default(IN_PERSON)
+  status          InterviewStatus @default(INTERVIEW_PENDING)
+
+  location        String?         @db.VarChar(500)
+  meetingUrl      String?         @map("meeting_url") @db.VarChar(500)
+
+  notes           String?         @db.Text
+  feedback        String?         @db.Text
+  rating          Int?
+
+  reminderSent    Boolean         @default(false) @map("reminder_sent")
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  slot            InterviewSlot   @relation(fields: [slotId], references: [id])
+  application     Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobPost         JobPost?        @relation(fields: [jobPostId], references: [id])
+
+  @@index([applicationId])
+  @@index([companyId])
+  @@map("interviews")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CAREER_FINDER_RESULT (KI-Berufsfinder-Ergebnisse)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model CareerFinderResult {
+  id                String   @id @default(uuid())
+  userId            String?  @map("user_id")
+  sessionId         String?  @map("session_id") @db.VarChar(100)
+
+  answers           Json     @default("[]")
+  suggestedJobs     Json     @default("[]") @map("suggested_jobs")
+  matchScores       Json     @default("{}") @map("match_scores")
+
+  topProfession     String?  @map("top_profession") @db.VarChar(255)
+  confidence        Decimal? @db.Decimal(5, 2)
+
+  completedSteps    Int      @default(0) @map("completed_steps")
+  totalSteps        Int      @default(10) @map("total_steps")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user              User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("career_finder_results")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB_BOOST (Sponsored Jobs) - KI Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobBoost {
+  id            String      @id @default(uuid())
+  jobPostId     String      @map("job_post_id")
+  companyId     String      @map("company_id")
+
+  type          BoostType   @default(BOOST)
+  status        BoostStatus @default(BOOST_PENDING)
+
+  pricePerWeek  Decimal     @map("price_per_week") @db.Decimal(10, 2)
+  totalPrice    Decimal     @map("total_price") @db.Decimal(10, 2)
+  currency      String      @default("EUR") @db.VarChar(3)
+
+  startDate     DateTime    @map("start_date")
+  endDate       DateTime    @map("end_date")
+
+  impressions   Int         @default(0)
+  clicks        Int         @default(0)
+  applications  Int         @default(0)
+
+  stripePaymentId String?   @map("stripe_payment_id") @db.VarChar(100)
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  jobPost       JobPost     @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([jobPostId])
+  @@index([companyId])
+  @@index([status])
+  @@map("job_boosts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TALENT_POOL (Talent-Pool) - KI Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model TalentPool {
+  id          String       @id @default(uuid())
+  companyId   String       @map("company_id")
+  userId      String       @map("user_id")
+
+  source      TalentSource @default(MANUAL)
+  tags        Json         @default("[]")
+  notes       String?      @db.Text
+  rating      Int?
+
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@map("talent_pools")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACHIEVEMENT (Achievement-Definitionen) - Gamification
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Achievement {
+  id            String              @id @default(uuid())
+
+  slug          String              @unique @db.VarChar(100)
+  name          String              @db.VarChar(200)
+  description   String              @db.VarChar(500)
+  icon          String              @db.VarChar(10)
+
+  category      AchievementCategory
+  rarity        AchievementRarity   @default(COMMON)
+  xpReward      Int                 @default(0) @map("xp_reward")
+
+  // Bedingung (z.B. {"type":"profile_complete","threshold":100})
+  condition     Json                @default("{}")
+
+  isActive      Boolean             @default(true) @map("is_active")
+  sortOrder     Int                 @default(0) @map("sort_order")
+
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// USER_ACHIEVEMENT (Freigeschaltete Achievements) - Gamification
+// ═══════════════════════════════════════════════════════════════════════════
+
+model UserAchievement {
+  id              String      @id @default(uuid())
+  userId          String      @map("user_id")
+  achievementId   String      @map("achievement_id")
+
+  unlockedAt      DateTime    @default(now()) @map("unlocked_at")
+  progress        Int         @default(100)
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement     Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@map("user_achievements")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FRIENDSHIP (Buddy-System) - Social Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Friendship {
+  id          String           @id @default(uuid())
+  senderId    String           @map("sender_id")
+  receiverId  String           @map("receiver_id")
+
+  status      FriendshipStatus @default(FRIENDSHIP_PENDING)
+
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  sender      User             @relation("FriendshipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User             @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId])
+  @@map("friendships")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB_RECOMMENDATION (Job-Empfehlungen an Freunde) - Social Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobRecommendation {
+  id          String   @id @default(uuid())
+  senderId    String   @map("sender_id")
+  receiverId  String   @map("receiver_id")
+  jobPostId   String   @map("job_post_id")
+
+  message     String?  @db.VarChar(500)
+  isRead      Boolean  @default(false) @map("is_read")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  sender      User     @relation("RecommendationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User     @relation("RecommendationReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([receiverId])
+  @@map("job_recommendations")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REFERRAL_CODE (Empfehlungscodes) - Social Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ReferralCode {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+
+  code            String   @unique @db.VarChar(20)
+  usageCount      Int      @default(0) @map("usage_count")
+  maxUsages       Int?     @map("max_usages")
+  xpPerReferral   Int      @default(50) @map("xp_per_referral")
+
+  isActive        Boolean  @default(true) @map("is_active")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([code])
+  @@map("referral_codes")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SKILL_TEST (Skill-Tests) - Social Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model SkillTest {
+  id            String           @id @default(uuid())
+
+  slug          String           @unique @db.VarChar(100)
+  name          String           @db.VarChar(200)
+  description   String?          @db.Text
+  icon          String?          @db.VarChar(10)
+
+  category      String           @db.VarChar(100)
+  difficulty    String           @default("mittel") @db.VarChar(20)
+  durationMin   Int              @default(10) @map("duration_min")
+
+  questions     Json             @default("[]")
+  passingScore  Int              @default(70) @map("passing_score")
+
+  isActive      Boolean          @default(true) @map("is_active")
+
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  results       SkillTestResult[]
+
+  @@map("skill_tests")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SKILL_TEST_RESULT (Skill-Test-Ergebnisse) - Social Feature
+// ═══════════════════════════════════════════════════════════════════════════
+
+model SkillTestResult {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  skillTestId   String    @map("skill_test_id")
+
+  score         Int
+  passed        Boolean   @default(false)
+  answers       Json      @default("[]")
+  timeSpentSec  Int?      @map("time_spent_sec")
+
+  xpEarned      Int       @default(0) @map("xp_earned")
+
+  completedAt   DateTime  @default(now()) @map("completed_at")
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillTest     SkillTest @relation(fields: [skillTestId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([skillTestId])
+  @@map("skill_test_results")
 }

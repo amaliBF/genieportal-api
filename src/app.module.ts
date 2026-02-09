@@ -30,6 +30,16 @@ import { ImportModule } from './import/import.module';
 import { ApplicationModule } from './application/application.module';
 import { PublicApiModule } from './public-api/public-api.module';
 import { EmbedModule } from './embed/embed.module';
+import { JobAlertModule } from './job-alert/job-alert.module';
+import { CompanyFollowModule } from './company-follow/company-follow.module';
+import { ReviewModule } from './review/review.module';
+import { BoostModule } from './boost/boost.module';
+import { GamificationModule } from './gamification/gamification.module';
+import { JobAnalyticsModule } from './job-analytics/job-analytics.module';
+import { SalaryModule } from './salary/salary.module';
+import { SocialModule } from './social/social.module';
+import { InterviewModule } from './interview/interview.module';
+import { TalentPoolModule } from './talent-pool/talent-pool.module';
 
 @Module({
   imports: [
@@ -80,6 +90,16 @@ import { EmbedModule } from './embed/embed.module';
     ApplicationModule,
     PublicApiModule,
     EmbedModule,
+    JobAlertModule,
+    CompanyFollowModule,
+    ReviewModule,
+    BoostModule,
+    GamificationModule,
+    JobAnalyticsModule,
+    SalaryModule,
+    SocialModule,
+    InterviewModule,
+    TalentPoolModule,
   ],
   providers: [
     {

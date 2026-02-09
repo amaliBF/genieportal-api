@@ -856,6 +856,79 @@ export class EmailService {
     return this.send(to, `Neue Bewerbung: ${bewerberName} für ${jobTitle}`, html, 'new-application');
   }
 
+  // ─── JOB-ALERT VERIFICATION EMAIL ──────────────────────────────────────────
+
+  async sendJobAlertVerification(
+    to: string,
+    token: string,
+    alertName: string,
+  ): Promise<boolean> {
+    const verifyUrl = `${this.appUrl}/api/public/job-alerts/verify?token=${token}`;
+
+    const html = this.wrap(
+      [
+        this.heading('Job-Alert best&auml;tigen'),
+        this.paragraph(`Hallo,`),
+        this.paragraph(
+          `Du hast einen Job-Alert f&uuml;r <strong>${this.escapeHtml(alertName)}</strong> erstellt. ` +
+          'Bitte best&auml;tige deine E-Mail-Adresse, damit wir dir passende Stellen zusenden k&ouml;nnen.',
+        ),
+        ctaButton('Job-Alert aktivieren', verifyUrl),
+        fallbackLink(verifyUrl),
+        this.infoBox(
+          'Falls du diesen Alert nicht erstellt hast, kannst du diese E-Mail einfach ignorieren.',
+        ),
+        this.signature(),
+      ].join('\n'),
+      `Job-Alert für ${alertName} bestätigen`,
+    );
+
+    return this.send(to, `Job-Alert bestätigen: ${alertName}`, html, 'job-alert-verification');
+  }
+
+  // ─── JOB-ALERT DIGEST EMAIL ───────────────────────────────────────────────
+
+  async sendJobAlertDigest(
+    to: string,
+    alertName: string,
+    jobs: any[],
+    unsubscribeToken: string,
+  ): Promise<boolean> {
+    const unsubscribeUrl = `${this.appUrl}/api/public/job-alerts/unsubscribe?token=${unsubscribeToken}`;
+
+    const jobListHtml = jobs.slice(0, 10).map((job) => `
+      <tr>
+        <td style="padding:12px 0;border-bottom:1px solid #F3F4F6;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1F2937;">${this.escapeHtml(job.title)}</p>
+          <p style="margin:0;font-size:13px;color:#6B7280;">
+            ${this.escapeHtml(job.company?.name || '')} &middot; ${this.escapeHtml(job.city || '')}
+          </p>
+        </td>
+      </tr>
+    `).join('');
+
+    const html = this.wrap(
+      [
+        this.heading(`&#128276; ${jobs.length} neue Stellen`),
+        this.paragraph(
+          `Wir haben <strong>${jobs.length} neue Stellen</strong> f&uuml;r deinen Alert ` +
+          `<strong>${this.escapeHtml(alertName)}</strong> gefunden:`,
+        ),
+        `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:0 0 24px;">
+          ${jobListHtml}
+        </table>`,
+        ctaButton(`Alle ${jobs.length} Stellen ansehen`, this.frontendUrl + '/stellen'),
+        `<p style="margin:24px 0 0;font-size:12px;color:#9CA3AF;text-align:center;">
+          <a href="${unsubscribeUrl}" style="color:#9CA3AF;">Alert abbestellen</a>
+        </p>`,
+        this.signature(),
+      ].join('\n'),
+      `${jobs.length} neue Stellen für ${alertName}`,
+    );
+
+    return this.send(to, `🔔 ${jobs.length} neue ${alertName}-Stellen`, html, 'job-alert-digest');
+  }
+
   // ─── UTILITIES ──────────────────────────────────────────────────────────────
 
   private escapeHtml(text: string): string {
