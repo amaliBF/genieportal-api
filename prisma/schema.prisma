@@ -735,6 +735,7 @@ model Video {
 
   processedPath         String?   @map("processed_path") @db.VarChar(500)
   thumbnailPath         String?   @map("thumbnail_path") @db.VarChar(500)
+  storagePath           String?   @map("storage_path") @db.VarChar(500)
 
   durationSeconds       Int?      @map("duration_seconds")
   width                 Int?

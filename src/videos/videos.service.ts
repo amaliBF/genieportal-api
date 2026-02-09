@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadService } from '../upload/upload.service';
+import { BunnyStorageService } from '../upload/bunny-storage.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { UpdateVideoDto } from './dto/update-video.dto';
 import { execFile } from 'child_process';
@@ -24,6 +25,7 @@ export class VideosService {
   constructor(
     private prisma: PrismaService,
     private uploadService: UploadService,
+    private bunnyStorage: BunnyStorageService,
     private config: ConfigService,
   ) {
     this.uploadDir = this.config.get<string>(
@@ -254,7 +256,7 @@ export class VideosService {
   async remove(videoId: string, companyId: string) {
     const video = await this.prisma.video.findUnique({
       where: { id: videoId },
-      select: { id: true, companyId: true, status: true },
+      select: { id: true, companyId: true, status: true, storagePath: true },
     });
 
     if (!video) {
@@ -269,6 +271,13 @@ export class VideosService {
       where: { id: videoId },
       data: { status: 'DELETED' },
     });
+
+    // Delete from BunnyCDN (fire-and-forget)
+    if (video.storagePath && this.bunnyStorage.isConfigured) {
+      const thumbPath = video.storagePath.replace('/videos/', '/thumbnails/').replace('.mp4', '.jpg');
+      this.bunnyStorage.deleteFile(video.storagePath).catch(() => {});
+      this.bunnyStorage.deleteFile(thumbPath).catch(() => {});
+    }
 
     return { success: true };
   }
@@ -336,7 +345,42 @@ export class VideosService {
       const processedSize = fs.statSync(processedPath).size;
       fs.renameSync(processedPath, absolutePath);
 
-      // 5. Update DB record
+      // 5. Upload to BunnyCDN (if configured)
+      let cdnVideoUrl: string | null = null;
+      let cdnThumbUrl: string | null = null;
+      let bunnyVideoPath: string | null = null;
+      let bunnyThumbPath: string | null = null;
+
+      if (this.bunnyStorage.isConfigured) {
+        try {
+          // Extract companyId from the original path: /videos/{companyId}/{uuid}.ext
+          const pathParts = originalPath.replace(/^\//, '').split('/');
+          const companyId = pathParts[1]; // videos / {companyId} / {file}
+
+          bunnyVideoPath = `companies/${companyId}/videos/${videoId}.mp4`;
+          bunnyThumbPath = `companies/${companyId}/thumbnails/${videoId}.jpg`;
+
+          cdnVideoUrl = await this.bunnyStorage.uploadFile(absolutePath, bunnyVideoPath);
+          this.logger.log(`Video ${videoId} uploaded to BunnyCDN: ${bunnyVideoPath}`);
+
+          if (fs.existsSync(thumbnailPath)) {
+            cdnThumbUrl = await this.bunnyStorage.uploadFile(thumbnailPath, bunnyThumbPath);
+            this.logger.log(`Thumbnail ${videoId} uploaded to BunnyCDN: ${bunnyThumbPath}`);
+          }
+
+          // Delete local files after successful CDN upload
+          if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+          if (fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath);
+        } catch (cdnErr) {
+          this.logger.error(`BunnyCDN upload failed for ${videoId}, keeping local files: ${cdnErr.message}`);
+          cdnVideoUrl = null;
+          cdnThumbUrl = null;
+          bunnyVideoPath = null;
+          bunnyThumbPath = null;
+        }
+      }
+
+      // 6. Update DB record
       await this.prisma.video.update({
         where: { id: videoId },
         data: {
@@ -344,12 +388,14 @@ export class VideosService {
           publishedAt: new Date(),
           filesize: processedSize,
           mimeType: 'video/mp4',
-          thumbnailPath: `thumbnails/${videoId}.jpg`,
+          filepath: cdnVideoUrl || originalPath,
+          thumbnailPath: cdnThumbUrl || `thumbnails/${videoId}.jpg`,
+          storagePath: bunnyVideoPath,
           ...(durationSeconds != null && { durationSeconds }),
         },
       });
 
-      this.logger.log(`Video ${videoId} processed successfully`);
+      this.logger.log(`Video ${videoId} processed successfully${cdnVideoUrl ? ' (BunnyCDN)' : ' (lokal)'})`);
     } catch (err) {
       // Clean up partial files
       if (fs.existsSync(processedPath)) fs.unlinkSync(processedPath);
