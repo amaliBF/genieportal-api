@@ -238,6 +238,13 @@ export class JobsService {
           },
           orderBy: { position: 'asc' },
         },
+        publishedPortals: {
+          include: {
+            portal: {
+              select: { id: true, name: true, icon: true, domain: true, slug: true },
+            },
+          },
+        },
         _count: {
           select: {
             likes: true,
@@ -251,9 +258,15 @@ export class JobsService {
 
     return jobs.map((job) => ({
       ...job,
-      websiteUrl: job.showOnWebsite && job.status === 'ACTIVE'
-        ? `https://ausbildungsgenie.de/stellen/${job.company?.slug || 'firma'}-${job.slug}-${job.id.substring(0, 8)}`
-        : null,
+      websiteUrls: job.showOnWebsite && job.status === 'ACTIVE'
+        ? job.publishedPortals.map((pp) => ({
+            portalId: pp.portal.id,
+            portalName: pp.portal.name,
+            portalIcon: pp.portal.icon,
+            domain: pp.portal.domain,
+            url: `https://${pp.portal.domain}/stellen/${job.company?.slug || 'firma'}-${job.slug}-${job.id.substring(0, 8)}`,
+          }))
+        : [],
     }));
   }
 
@@ -302,6 +315,12 @@ export class JobsService {
     if (dto.videoIds?.length) {
       await this.linkVideosToJob(job.id, companyId, dto.videoIds);
     }
+
+    // Sync portal publishing
+    const portalIds = dto.publishedPortalIds?.length
+      ? dto.publishedPortalIds
+      : [job.portalId];
+    await this.syncJobPortals(job.id, portalIds);
 
     return job;
   }
@@ -364,6 +383,11 @@ export class JobsService {
       await this.linkVideosToJob(jobId, companyId, dto.videoIds);
     }
 
+    // Sync portal publishing if provided
+    if (dto.publishedPortalIds !== undefined) {
+      await this.syncJobPortals(jobId, dto.publishedPortalIds);
+    }
+
     return updated;
   }
 
@@ -410,6 +434,24 @@ export class JobsService {
         publishedAt: new Date(),
       },
     });
+  }
+
+  // ─── DASHBOARD: SYNC JOB PORTALS ────────────────────────────────────────
+
+  private async syncJobPortals(jobId: string, portalIds: number[]) {
+    await this.prisma.jobPostPortal.deleteMany({
+      where: { jobPostId: jobId },
+    });
+
+    if (portalIds.length > 0) {
+      await this.prisma.jobPostPortal.createMany({
+        data: portalIds.map((portalId) => ({
+          jobPostId: jobId,
+          portalId,
+        })),
+        skipDuplicates: true,
+      });
+    }
   }
 
   // ─── DASHBOARD: LINK VIDEOS TO JOB ──────────────────────────────────────

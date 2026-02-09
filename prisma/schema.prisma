@@ -164,6 +164,7 @@ model Portal {
   userBereiche          UserBereich[]
   companyBereiche       CompanyBereich[]
   auditLogs             AuditLog[]
+  jobPostPortals        JobPostPortal[]
 
   @@map("portals")
 }
@@ -719,6 +720,7 @@ model JobPost {
   portal                Portal    @relation(fields: [portalId], references: [id])
   videoJobPosts         VideoJobPost[]
   applications          Application[]
+  publishedPortals      JobPostPortal[]
 
   @@index([companyId])
   @@index([professionId])
@@ -799,6 +801,24 @@ model VideoJobPost {
 
   @@unique([videoId, jobPostId])
   @@map("video_job_posts")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOB_POST_PORTALS (Many-to-Many: JobPost ↔ Portal - Multi-Portal Publishing)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model JobPostPortal {
+  id        String   @id @default(uuid())
+  jobPostId String   @map("job_post_id")
+  portalId  Int      @map("portal_id")
+
+  jobPost   JobPost  @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  portal    Portal   @relation(fields: [portalId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([jobPostId, portalId])
+  @@map("job_post_portals")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

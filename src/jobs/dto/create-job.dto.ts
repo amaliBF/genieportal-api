@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsBoolean,
   IsArray,
+  IsNumber,
   MaxLength,
   Min,
   IsNotEmpty,
@@ -107,4 +108,10 @@ export class CreateJobDto {
   @IsArray()
   @IsString({ each: true })
   videoIds?: string[];
+
+  @ApiProperty({ description: 'Portal-IDs fuer Multi-Portal-Veroeffentlichung', required: false, type: [Number] })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  publishedPortalIds?: number[];
 }

@@ -75,7 +75,12 @@ export class PublicJobsService {
       status: 'ACTIVE',
       showOnWebsite: true,
     };
-    if (portalId) where.portalId = portalId;
+    if (portalId) {
+      where.OR = [
+        { portalId },
+        { publishedPortals: { some: { portalId } } },
+      ];
+    }
     return where;
   }
 

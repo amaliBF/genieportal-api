@@ -10,6 +10,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PortalService } from './portal.service';
 import { AdminAuthGuard } from '../admin/guards/admin-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC ROUTES - Portale/Bereiche
@@ -57,5 +58,23 @@ export class PortalController {
     @Body() body: { status?: string; description?: string },
   ) {
     return this.portalService.update(id, body);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD ROUTES - Aktive Portale (Authenticated)
+// ═══════════════════════════════════════════════════════════════════════════
+
+@ApiTags('Dashboard - Portale')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('dashboard/portals')
+export class DashboardPortalController {
+  constructor(private portalService: PortalService) {}
+
+  @Get('active')
+  @ApiOperation({ summary: 'Aktive LIVE-Portale fuer Portal-Auswahl' })
+  async getActivePortals() {
+    return this.portalService.findAllPublic();
   }
 }
