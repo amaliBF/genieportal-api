@@ -2,15 +2,16 @@ import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Forbi
 import { PrismaService } from '../../prisma/prisma.service';
 import { createHash } from 'crypto';
 
-// In-memory rate limiter
+// In-memory rate limiter (hourly + daily)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const dailyRateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
-// Plan-based rate limits (requests per hour)
-const PLAN_RATE_LIMITS: Record<string, number> = {
-  FREE: 100,
-  STARTER: 500,
-  PRO: 2000,
-  ENTERPRISE: 10000,
+// Plan-based rate limits
+const PLAN_RATE_LIMITS: Record<string, { perHour: number; perDay: number }> = {
+  FREE: { perHour: 100, perDay: 500 },
+  STARTER: { perHour: 1000, perDay: 10000 },
+  PRO: { perHour: 5000, perDay: 50000 },
+  ENTERPRISE: { perHour: 10000, perDay: 100000 },
 };
 
 @Injectable()
@@ -50,36 +51,75 @@ export class ApiKeyGuard implements CanActivate {
       throw new ForbiddenException('API-Key hat keine Leseberechtigung');
     }
 
+    // IP Whitelist check
+    const allowedIps = apiKey.allowedIps as string[] | null;
+    if (allowedIps && allowedIps.length > 0) {
+      const clientIp = request.ip?.replace('::ffff:', '') || '';
+      if (!allowedIps.includes(clientIp)) {
+        throw new ForbiddenException({ error: { code: 'ip_not_allowed', message: 'IP-Adresse nicht erlaubt' } });
+      }
+    }
+
+    // Domain Whitelist check
+    const allowedDomains = apiKey.allowedDomains as string[] | null;
+    if (allowedDomains && allowedDomains.length > 0) {
+      const origin = request.headers['origin'] || request.headers['referer'] || '';
+      const originHost = origin ? (() => { try { return new URL(origin).hostname; } catch { return ''; } })() : '';
+      if (originHost && !allowedDomains.some(d => originHost === d || originHost.endsWith('.' + d))) {
+        throw new ForbiddenException({ error: { code: 'domain_not_allowed', message: 'Domain nicht erlaubt' } });
+      }
+    }
+
     // Plan-based rate limiting
     const plan = (apiKey.company as any)?.subscriptionPlan || 'FREE';
-    const planLimit = PLAN_RATE_LIMITS[plan] || PLAN_RATE_LIMITS.FREE;
-    const limit = apiKey.rateLimit ? Math.min(apiKey.rateLimit, planLimit) : planLimit;
+    const planLimits = PLAN_RATE_LIMITS[plan] || PLAN_RATE_LIMITS.FREE;
+    const hourlyLimit = apiKey.rateLimit ? Math.min(apiKey.rateLimit, planLimits.perHour) : planLimits.perHour;
+    const dailyLimit = planLimits.perDay;
 
     const now = Date.now();
-    const windowMs = 3600000; // 1 hour
+
+    // Hourly bucket
     let bucket = rateLimitMap.get(keyHash);
     if (!bucket || now > bucket.resetAt) {
-      bucket = { count: 0, resetAt: now + windowMs };
+      bucket = { count: 0, resetAt: now + 3600000 };
       rateLimitMap.set(keyHash, bucket);
     }
     bucket.count++;
 
-    const remaining = Math.max(0, limit - bucket.count);
+    // Daily bucket
+    let dailyBucket = dailyRateLimitMap.get(keyHash);
+    if (!dailyBucket || now > dailyBucket.resetAt) {
+      dailyBucket = { count: 0, resetAt: now + 86400000 };
+      dailyRateLimitMap.set(keyHash, dailyBucket);
+    }
+    dailyBucket.count++;
 
-    response.setHeader('X-RateLimit-Limit', limit.toString());
+    const remaining = Math.max(0, hourlyLimit - bucket.count);
+
+    response.setHeader('X-RateLimit-Limit', hourlyLimit.toString());
     response.setHeader('X-RateLimit-Remaining', remaining.toString());
     response.setHeader('X-RateLimit-Reset', Math.ceil(bucket.resetAt / 1000).toString());
     response.setHeader('X-RateLimit-Plan', plan);
+    response.setHeader('X-RateLimit-Daily-Limit', dailyLimit.toString());
+    response.setHeader('X-RateLimit-Daily-Remaining', Math.max(0, dailyLimit - dailyBucket.count).toString());
 
-    if (bucket.count > limit) {
-      throw new UnauthorizedException('Rate Limit überschritten');
+    if (bucket.count > hourlyLimit) {
+      const retryAfter = Math.ceil((bucket.resetAt - now) / 1000);
+      throw new ForbiddenException({
+        error: { code: 'rate_limit_exceeded', message: `Stündliches Rate Limit überschritten. Bitte in ${Math.ceil(retryAfter / 60)} Minuten erneut versuchen.`, retry_after: retryAfter },
+      });
+    }
+    if (dailyBucket.count > dailyLimit) {
+      throw new ForbiddenException({
+        error: { code: 'daily_rate_limit_exceeded', message: 'Tägliches Rate Limit überschritten.' },
+      });
     }
 
     // Attach to request
     request.apiKey = {
       id: apiKey.id,
       companyId: apiKey.companyId,
-      rateLimit: limit,
+      rateLimit: hourlyLimit,
       permissions,
       plan,
     };

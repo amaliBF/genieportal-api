@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Delete, Param, Query, Body, UseGuards,
+  Controller, Get, Post, Put, Delete, Param, Query, Body, UseGuards, Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -63,6 +63,18 @@ export class PublicApiController {
     return this.publicApiService.deleteJob(companyId, id);
   }
 
+  @Post('jobs/:id/publish')
+  @ApiOperation({ summary: 'Stelle veroeffentlichen' })
+  async publishJob(@ApiCompany('companyId') companyId: string, @Param('id') id: string) {
+    return this.publicApiService.publishJob(companyId, id);
+  }
+
+  @Post('jobs/:id/unpublish')
+  @ApiOperation({ summary: 'Stelle pausieren' })
+  async unpublishJob(@ApiCompany('companyId') companyId: string, @Param('id') id: string) {
+    return this.publicApiService.unpublishJob(companyId, id);
+  }
+
   // ─── Applications ─────────────────────────────────────────────────────────
 
   @Get('applications')
@@ -95,12 +107,34 @@ export class PublicApiController {
     return this.publicApiService.updateApplicationStatus(companyId, id, dto.status);
   }
 
+  @Get('applications/:id/documents/:docId')
+  @ApiOperation({ summary: 'Bewerbungsdokument herunterladen' })
+  async getDocument(
+    @ApiCompany('companyId') companyId: string,
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @Res() res: any,
+  ) {
+    const doc = await this.publicApiService.getApplicationDocument(companyId, id, docId);
+    if (doc.storagePath.startsWith('http')) {
+      res.redirect(doc.storagePath);
+    } else {
+      res.sendFile(doc.storagePath, { root: '/' });
+    }
+  }
+
   // ─── Company ──────────────────────────────────────────────────────────────
 
   @Get('company')
   @ApiOperation({ summary: 'Firmenprofil' })
   async getCompany(@ApiCompany('companyId') companyId: string) {
     return this.publicApiService.getCompany(companyId);
+  }
+
+  @Put('company')
+  @ApiOperation({ summary: 'Firmenprofil aktualisieren' })
+  async updateCompany(@ApiCompany('companyId') companyId: string, @Body() body: any) {
+    return this.publicApiService.updateCompany(companyId, body);
   }
 
   // ─── Webhooks ────────────────────────────────────────────────────────────

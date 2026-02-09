@@ -77,8 +77,13 @@ export class ImportController {
     }
 
     const date = new Date().toISOString().split('T')[0];
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename=stellen-export-${date}.csv`);
+    if (format === 'xlsx') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=stellen-export-${date}.xlsx`);
+    } else {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename=stellen-export-${date}.csv`);
+    }
     res.send(result);
   }
 

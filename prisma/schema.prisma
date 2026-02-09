@@ -680,6 +680,7 @@ model JobPost {
 
   // App-Konzept: Erweiterte Felder
   beruf                 String?   @db.VarChar(255)
+  bereich               String?   @db.VarChar(50)
   anforderungen         Json?     @default("[]")
   gehalt                Json?
   arbeitszeit           String?   @db.VarChar(50)
@@ -1240,6 +1241,7 @@ model ImportLog {
   companyId       String       @map("company_id")
 
   filename        String       @db.VarChar(255)
+  fileSize        Int          @default(0) @map("file_size")
   status          ImportStatus @default(PENDING)
 
   totalRows       Int          @default(0) @map("total_rows")

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Res, Header } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { EmbedService } from './embed.service';
@@ -16,10 +16,17 @@ export class EmbedController {
     @Query('theme') theme?: string,
     @Query('color') color?: string,
     @Query('limit') limit?: string,
+    @Query('layout') layout?: string,
+    @Query('bereich') bereich?: string,
+    @Query('showFilters') showFilters?: string,
     @Res() res?: any,
   ) {
     const html = await this.embedService.getJobListHtml(key, {
-      theme, color, limit: limit ? parseInt(limit, 10) : undefined,
+      theme, color,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      layout: layout || 'list',
+      bereich,
+      showFilters: showFilters === 'true',
     });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('X-Frame-Options', 'ALLOWALL');
@@ -34,9 +41,15 @@ export class EmbedController {
     @Query('key') key: string,
     @Query('theme') theme?: string,
     @Query('color') color?: string,
+    @Query('showApply') showApply?: string,
+    @Query('applyText') applyText?: string,
     @Res() res?: any,
   ) {
-    const html = await this.embedService.getJobDetailHtml(key, id, { theme, color });
+    const html = await this.embedService.getJobDetailHtml(key, id, {
+      theme, color,
+      showApply: showApply !== 'false',
+      applyText,
+    });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('X-Frame-Options', 'ALLOWALL');
     res.setHeader('Access-Control-Allow-Origin', '*');

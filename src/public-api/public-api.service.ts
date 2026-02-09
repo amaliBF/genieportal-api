@@ -93,6 +93,24 @@ export class PublicApiService {
     return this.prisma.jobPost.update({ where: { id: jobId }, data: { status: 'CLOSED' } });
   }
 
+  async publishJob(companyId: string, jobId: string) {
+    const job = await this.prisma.jobPost.findUnique({ where: { id: jobId } });
+    if (!job || job.companyId !== companyId) throw new NotFoundException('Stelle nicht gefunden');
+    return this.prisma.jobPost.update({
+      where: { id: jobId },
+      data: { status: 'ACTIVE', publishedAt: job.publishedAt || new Date() },
+    });
+  }
+
+  async unpublishJob(companyId: string, jobId: string) {
+    const job = await this.prisma.jobPost.findUnique({ where: { id: jobId } });
+    if (!job || job.companyId !== companyId) throw new NotFoundException('Stelle nicht gefunden');
+    return this.prisma.jobPost.update({
+      where: { id: jobId },
+      data: { status: 'PAUSED' },
+    });
+  }
+
   // ─── Applications ─────────────────────────────────────────────────────────
 
   async listApplications(companyId: string, page = 1, limit = 20) {
@@ -137,6 +155,24 @@ export class PublicApiService {
         logoUrl: true, website: true, employeeCount: true,
       },
     });
+  }
+
+  async updateCompany(companyId: string, data: any) {
+    const update: any = {};
+    const allowed = ['name', 'description', 'shortDescription', 'city', 'postalCode', 'street',
+      'industry', 'website', 'phone', 'employeeCount', 'foundedYear'];
+    for (const key of allowed) {
+      if (data[key] !== undefined) update[key] = data[key];
+    }
+    return this.prisma.company.update({ where: { id: companyId }, data: update });
+  }
+
+  async getApplicationDocument(companyId: string, applicationId: string, docId: string) {
+    const app = await this.prisma.application.findUnique({ where: { id: applicationId } });
+    if (!app || app.companyId !== companyId) throw new NotFoundException('Bewerbung nicht gefunden');
+    const doc = await this.prisma.applicationDocument.findUnique({ where: { id: docId } });
+    if (!doc || doc.applicationId !== applicationId) throw new NotFoundException('Dokument nicht gefunden');
+    return doc;
   }
 
   // ─── Webhooks ────────────────────────────────────────────────────────────

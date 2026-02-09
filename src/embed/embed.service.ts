@@ -17,11 +17,17 @@ export class EmbedService {
     return apiKey.companyId;
   }
 
-  async getJobListHtml(key: string, options: { theme?: string; color?: string; limit?: number }) {
+  async getJobListHtml(key: string, options: {
+    theme?: string; color?: string; limit?: number;
+    layout?: string; bereich?: string; showFilters?: boolean;
+  }) {
     const companyId = await this.validateKey(key);
+    const where: any = { companyId, status: 'ACTIVE' };
+    if (options.bereich) where.bereich = options.bereich;
+
     const jobs = await this.prisma.jobPost.findMany({
-      where: { companyId, status: 'ACTIVE' },
-      select: { id: true, title: true, city: true, postalCode: true, salaryYear1: true },
+      where,
+      select: { id: true, title: true, slug: true, city: true, postalCode: true, salaryYear1: true },
       orderBy: { publishedAt: 'desc' },
       take: options.limit || 10,
     });
@@ -30,10 +36,15 @@ export class EmbedService {
       theme: options.theme || 'light',
       color: options.color || '#6366f1',
       apiUrl: 'https://api.genieportal.de',
+      layout: options.layout || 'list',
+      bereich: options.bereich,
+      showFilters: options.showFilters || false,
     });
   }
 
-  async getJobDetailHtml(key: string, jobId: string, options: { theme?: string; color?: string }) {
+  async getJobDetailHtml(key: string, jobId: string, options: {
+    theme?: string; color?: string; showApply?: boolean; applyText?: string;
+  }) {
     const companyId = await this.validateKey(key);
     const job = await this.prisma.jobPost.findUnique({
       where: { id: jobId },
@@ -44,6 +55,8 @@ export class EmbedService {
     return jobDetailTemplate(job, job.company, {
       theme: options.theme || 'light',
       color: options.color || '#6366f1',
+      showApply: options.showApply !== false,
+      applyText: options.applyText,
     });
   }
 

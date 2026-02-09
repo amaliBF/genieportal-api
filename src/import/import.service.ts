@@ -17,8 +17,11 @@ const KNOWN_COLUMNS: Record<string, string> = {
   dauer: 'durationMonths', duration_months: 'durationMonths', 'dauer (monate)': 'durationMonths',
   plaetze: 'positionsAvailable', positions_available: 'positionsAvailable', anzahl: 'positionsAvailable',
   beruf: 'beruf', profession: 'beruf',
+  bereich: 'bereich', kategorie: 'bereich', category: 'bereich',
   referenz: 'referenzId', referenz_id: 'referenzId', 'referenz-id': 'referenzId',
 };
+
+const MAX_IMPORT_ROWS = 1000;
 
 @Injectable()
 export class ImportService {
@@ -62,6 +65,9 @@ export class ImportService {
     if (records.length === 0) {
       throw new BadRequestException('Die Datei enthält keine Daten');
     }
+    if (records.length > MAX_IMPORT_ROWS) {
+      throw new BadRequestException(`Maximal ${MAX_IMPORT_ROWS} Zeilen erlaubt (${records.length} gefunden)`);
+    }
 
     const columns = Object.keys(records[0]);
     const autoMapping: Record<string, string> = {};
@@ -86,6 +92,7 @@ export class ImportService {
       data: {
         companyId,
         filename: file.originalname,
+        fileSize: file.size || 0,
         status: 'PENDING',
         totalRows: records.length,
         columnMapping: autoMapping,
@@ -101,7 +108,7 @@ export class ImportService {
       availableFields: [
         'title', 'description', 'requirements', 'benefits',
         'postalCode', 'city', 'salaryYear1', 'salaryYear2', 'salaryYear3',
-        'startDate', 'durationMonths', 'positionsAvailable', 'beruf', 'referenzId',
+        'startDate', 'durationMonths', 'positionsAvailable', 'beruf', 'bereich', 'referenzId',
       ],
     };
   }
@@ -144,11 +151,15 @@ export class ImportService {
     showOnWebsite?: boolean,
   ) {
     const records = this.parseFile(file);
+    if (records.length > MAX_IMPORT_ROWS) {
+      throw new BadRequestException(`Maximal ${MAX_IMPORT_ROWS} Zeilen erlaubt (${records.length} gefunden)`);
+    }
 
     const importLog = await this.prisma.importLog.create({
       data: {
         companyId,
         filename: file.originalname,
+        fileSize: file.size || 0,
         status: 'PROCESSING',
         totalRows: records.length,
         columnMapping,
@@ -189,6 +200,7 @@ export class ImportService {
           postalCode: mapped.postalCode || null,
           city: mapped.city || null,
           beruf: mapped.beruf || null,
+          bereich: mapped.bereich || null,
           showOnWebsite: showOnWebsite ?? true,
           status: publishImmediately ? 'ACTIVE' : 'DRAFT',
           ...(publishImmediately && { publishedAt: new Date() }),
@@ -279,13 +291,12 @@ export class ImportService {
 
     if (format === 'json') return jobs;
 
-    // CSV
     const headers = ['Titel', 'Beschreibung', 'Anforderungen', 'Benefits', 'PLZ', 'Stadt', '1. Lehrjahr', '2. Lehrjahr', '3. Lehrjahr', 'Startdatum', 'Dauer (Monate)', 'Plaetze', 'Beruf', 'Status', 'Erstellt am'];
-    const rows = jobs.map(j => [
-      this.csvEscape(j.title),
-      this.csvEscape(j.description || ''),
-      this.csvEscape(j.requirements || ''),
-      this.csvEscape(j.benefits || ''),
+    const dataRows = jobs.map(j => [
+      j.title,
+      j.description || '',
+      j.requirements || '',
+      typeof j.benefits === 'string' ? j.benefits : Array.isArray(j.benefits) ? (j.benefits as string[]).join(', ') : '',
       j.postalCode || '',
       j.city || '',
       j.salaryYear1?.toString() || '',
@@ -297,9 +308,18 @@ export class ImportService {
       j.profession?.name || j.beruf || '',
       j.status,
       new Date(j.createdAt).toISOString().split('T')[0],
-    ].join(';'));
+    ]);
 
-    return '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+    if (format === 'xlsx') {
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Stellen');
+      return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    }
+
+    // CSV
+    const csvRows = dataRows.map(r => r.map(v => this.csvEscape(String(v))).join(';'));
+    return '\uFEFF' + headers.join(';') + '\n' + csvRows.join('\n');
   }
 
   getTemplate(format: string = 'csv'): string | Buffer {
