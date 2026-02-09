@@ -21,6 +21,7 @@ import {
   ApiParam,
   ApiBody,
   ApiConsumes,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -118,6 +119,31 @@ export class UsersController {
     @Body('lng') lng?: number,
   ) {
     return this.usersService.updateLocation(userId, postalCode, city, lat, lng);
+  }
+
+  @Put('push-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Push-Token registrieren (Expo/FCM)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['token'],
+      properties: {
+        token: { type: 'string', description: 'Expo Push Token oder FCM Token' },
+        platform: { type: 'string', enum: ['expo', 'fcm', 'apns'], description: 'Token-Plattform' },
+      },
+    },
+  })
+  async registerPushToken(
+    @CurrentUser('userId') userId: string,
+    @Body('token') token: string,
+    @Body('platform') platform?: string,
+  ) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { fcmToken: token, pushEnabled: true },
+    });
+    return { success: true };
   }
 
   @Delete('account')

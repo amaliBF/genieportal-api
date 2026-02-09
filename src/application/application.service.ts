@@ -307,6 +307,142 @@ export class ApplicationService {
     return '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
   }
 
+  // ─── USER: Get my applications ──────────────────────────────────────────────
+
+  async getUserApplications(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) return [];
+
+    const applications = await this.prisma.application.findMany({
+      where: {
+        OR: [
+          { userId: userId },
+          { email: user.email },
+        ],
+      },
+      include: {
+        jobPost: {
+          select: {
+            id: true,
+            title: true,
+            company: { select: { id: true, name: true, logoUrl: true } },
+          },
+        },
+        documents: {
+          select: { id: true, dokumentTyp: true, originalName: true, fileSize: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return applications;
+  }
+
+  // ─── USER: Get single application ──────────────────────────────────────────
+
+  async getUserApplication(userId: string, applicationId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) throw new NotFoundException('Benutzer nicht gefunden');
+
+    const application = await this.prisma.application.findUnique({
+      where: { id: applicationId },
+      include: {
+        jobPost: {
+          select: {
+            id: true,
+            title: true,
+            company: { select: { id: true, name: true, logoUrl: true } },
+          },
+        },
+        documents: true,
+      },
+    });
+
+    if (!application) throw new NotFoundException('Bewerbung nicht gefunden');
+    if (application.userId !== userId && application.email !== user.email) {
+      throw new NotFoundException('Bewerbung nicht gefunden');
+    }
+
+    return application;
+  }
+
+  // ─── USER: Submit application from app ─────────────────────────────────────
+
+  async submitFromApp(
+    userId: string,
+    jobPostId: string,
+    data: any,
+    files: Express.Multer.File[],
+  ) {
+    // Fetch user data to pre-fill
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Benutzer nicht gefunden');
+
+    // Merge user data with submission data
+    const mergedData = {
+      firstName: data.firstName || user.firstName,
+      lastName: data.lastName || user.lastName || '',
+      email: data.email || user.email,
+      phone: data.phone || user.phone || null,
+      postalCode: data.postalCode || user.postalCode || null,
+      city: data.city || user.city || null,
+      message: data.message || null,
+      anschreiben: data.anschreiben || null,
+      schulabschluss: data.schulabschluss || user.currentSchoolType || null,
+      abschlussjahr: data.abschlussjahr || (user.graduationYear ? String(user.graduationYear) : null),
+      datenschutzAkzeptiert: true,
+    };
+
+    // Use existing submitApplication method with APP source
+    const result = await this.submitApplication(jobPostId, mergedData, files, 'APP');
+
+    // Link application to user
+    if (result.applicationId) {
+      await this.prisma.application.update({
+        where: { id: result.applicationId },
+        data: { userId },
+      });
+    }
+
+    return result;
+  }
+
+  // ─── USER: Withdraw application ────────────────────────────────────────────
+
+  async withdrawApplication(userId: string, applicationId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) throw new NotFoundException('Benutzer nicht gefunden');
+
+    const application = await this.prisma.application.findUnique({
+      where: { id: applicationId },
+    });
+
+    if (!application) throw new NotFoundException('Bewerbung nicht gefunden');
+    if (application.userId !== userId && application.email !== user.email) {
+      throw new NotFoundException('Bewerbung nicht gefunden');
+    }
+
+    if (application.status === 'WITHDRAWN') {
+      return { success: true, message: 'Bewerbung war bereits zurueckgezogen' };
+    }
+
+    await this.prisma.application.update({
+      where: { id: applicationId },
+      data: { status: 'WITHDRAWN' },
+    });
+
+    return { success: true, message: 'Bewerbung zurueckgezogen' };
+  }
+
   // ─── DASHBOARD: Delete application (DSGVO) ─────────────────────────────────
 
   async deleteApplication(companyId: string, id: string) {

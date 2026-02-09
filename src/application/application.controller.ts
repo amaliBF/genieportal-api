@@ -1,9 +1,9 @@
 import {
   Controller, Get, Post, Put, Delete, Param, Query, Body, UseGuards,
-  UseInterceptors, UploadedFiles, Res,
+  UseInterceptors, UploadedFiles, Res, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes, ApiResponse } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -148,5 +148,61 @@ export class ApplicationDashboardController {
     @Body() dto: UpdateFormConfigDto,
   ) {
     return this.applicationService.updateFormConfig(companyId, dto);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// USER ROUTES (App - Auth)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+@ApiTags('Bewerbungen (App)')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller()
+export class ApplicationUserController {
+  constructor(private applicationService: ApplicationService) {}
+
+  @Get('users/me/applications')
+  @ApiOperation({ summary: 'Eigene Bewerbungen abrufen' })
+  @ApiResponse({ status: 200, description: 'Liste der eigenen Bewerbungen' })
+  async getMyApplications(@CurrentUser('userId') userId: string) {
+    return this.applicationService.getUserApplications(userId);
+  }
+
+  @Get('applications/:id')
+  @ApiOperation({ summary: 'Einzelne Bewerbung abrufen (User)' })
+  @ApiResponse({ status: 200, description: 'Bewerbungsdetails' })
+  @ApiResponse({ status: 404, description: 'Bewerbung nicht gefunden' })
+  async getApplication(
+    @CurrentUser('userId') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.applicationService.getUserApplication(userId, id);
+  }
+
+  @Post('applications/job/:jobPostId')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Bewerbung ueber die App einreichen' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('documents', 5, { limits: { fileSize: 5 * 1024 * 1024 } }))
+  async applyFromApp(
+    @CurrentUser('userId') userId: string,
+    @Param('jobPostId') jobPostId: string,
+    @Body() body: any,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.applicationService.submitFromApp(userId, jobPostId, body, files || []);
+  }
+
+  @Put('applications/:id/withdraw')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Bewerbung zurueckziehen' })
+  @ApiResponse({ status: 200, description: 'Bewerbung zurueckgezogen' })
+  @ApiResponse({ status: 404, description: 'Bewerbung nicht gefunden' })
+  async withdraw(
+    @CurrentUser('userId') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.applicationService.withdrawApplication(userId, id);
   }
 }
