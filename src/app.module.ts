@@ -26,6 +26,10 @@ import { CustomerModule } from './customer/customer.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { SecurityModule } from './common/security/security.module';
 import { CouponModule } from './coupon/coupon.module';
+import { ImportModule } from './import/import.module';
+import { ApplicationModule } from './application/application.module';
+import { PublicApiModule } from './public-api/public-api.module';
+import { EmbedModule } from './embed/embed.module';
 
 @Module({
   imports: [
@@ -72,6 +76,10 @@ import { CouponModule } from './coupon/coupon.module';
     AuditLogModule,
     SecurityModule,
     CouponModule,
+    ImportModule,
+    ApplicationModule,
+    PublicApiModule,
+    EmbedModule,
   ],
   providers: [
     {

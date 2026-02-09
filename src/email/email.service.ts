@@ -797,6 +797,65 @@ export class EmailService {
     return this.send(to, `Ihr Plan laeuft am ${expiresAt} ab`, html, 'plan-expiring');
   }
 
+  // ─── APPLICATION CONFIRMATION (an Bewerber) ────────────────────────────────
+
+  async sendApplicationConfirmation(
+    to: string,
+    bewerberName: string,
+    jobTitle: string,
+    companyName: string,
+  ): Promise<boolean> {
+    const html = this.wrap(
+      [
+        this.heading('Bewerbung eingegangen &#9989;'),
+        this.greeting(bewerberName),
+        this.paragraph(
+          `Vielen Dank f&uuml;r deine Bewerbung auf die Stelle <strong>${this.escapeHtml(jobTitle)}</strong> ` +
+          `bei <strong>${this.escapeHtml(companyName)}</strong>.`,
+        ),
+        this.paragraph(
+          'Deine Bewerbung wurde erfolgreich &uuml;bermittelt. Das Unternehmen wird sich in K&uuml;rze bei dir melden.',
+        ),
+        this.infoBox(
+          'Tipp: Lade die Genie-App und erhalte Push-Benachrichtigungen zu deiner Bewerbung!',
+        ),
+        this.signature(),
+      ].join('\n'),
+      `Bewerbung bei ${companyName} eingegangen`,
+    );
+
+    return this.send(to, `Bewerbung eingegangen: ${jobTitle}`, html, 'application-confirmation');
+  }
+
+  // ─── NEW APPLICATION NOTIFICATION (an Firma) ──────────────────────────────
+
+  async sendNewApplicationNotification(
+    to: string,
+    companyName: string,
+    bewerberName: string,
+    jobTitle: string,
+    dashboardUrl: string,
+  ): Promise<boolean> {
+    const html = this.wrap(
+      [
+        this.heading('Neue Bewerbung! &#128233;'),
+        this.greeting(companyName),
+        this.paragraph(
+          `<strong>${this.escapeHtml(bewerberName)}</strong> hat sich auf die Stelle ` +
+          `<strong>${this.escapeHtml(jobTitle)}</strong> beworben.`,
+        ),
+        this.paragraph(
+          'Schauen Sie sich die Bewerbung im Dashboard an und nehmen Sie Kontakt auf.',
+        ),
+        ctaButton('Bewerbung ansehen', dashboardUrl),
+        this.signature(),
+      ].join('\n'),
+      `Neue Bewerbung von ${bewerberName}`,
+    );
+
+    return this.send(to, `Neue Bewerbung: ${bewerberName} für ${jobTitle}`, html, 'new-application');
+  }
+
   // ─── UTILITIES ──────────────────────────────────────────────────────────────
 
   private escapeHtml(text: string): string {

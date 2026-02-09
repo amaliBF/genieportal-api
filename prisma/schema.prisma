@@ -546,6 +546,13 @@ model Company {
   companyBereiche       CompanyBereich[]
   couponRedemptions     CouponRedemption[]
 
+  // Enterprise Features
+  importLogs            ImportLog[]
+  applications          Application[]
+  applicationFormConfig ApplicationFormConfig?
+  apiKeys               ApiKey[]
+  webhooks              Webhook[]
+
   @@index([postalCode])
   @@index([status])
   @@index([slug])
@@ -710,6 +717,7 @@ model JobPost {
   // Relations (NEU)
   portal                Portal    @relation(fields: [portalId], references: [id])
   videoJobPosts         VideoJobPost[]
+  applications          Application[]
 
   @@index([companyId])
   @@index([professionId])
@@ -1123,6 +1131,43 @@ enum EmailStatus {
   DELIVERED
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ENTERPRISE ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ApplicationStatus {
+  NEW
+  VIEWED
+  SHORTLISTED
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ApplicationSource {
+  WEBSITE
+  APP
+  EMBED
+  API
+}
+
+enum DocumentType {
+  LEBENSLAUF
+  ANSCHREIBEN
+  ZEUGNIS
+  ZERTIFIKAT
+  SONSTIGES
+}
+
 model EmailLog {
   id          String      @id @default(uuid())
 
@@ -1184,4 +1229,215 @@ model CouponRedemption {
 
   @@unique([couponId, companyId])
   @@map("coupon_redemptions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORT_LOG (CSV-Import Tracking) - Enterprise
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ImportLog {
+  id              String       @id @default(uuid())
+  companyId       String       @map("company_id")
+
+  filename        String       @db.VarChar(255)
+  status          ImportStatus @default(PENDING)
+
+  totalRows       Int          @default(0) @map("total_rows")
+  importedCount   Int          @default(0) @map("imported_count")
+  updatedCount    Int          @default(0) @map("updated_count")
+  skippedCount    Int          @default(0) @map("skipped_count")
+  errorCount      Int          @default(0) @map("error_count")
+
+  columnMapping   Json?        @map("column_mapping")
+  errorDetails    Json?        @map("error_details")
+  mode            String       @default("ADD") @db.VarChar(20)
+
+  createdAt       DateTime     @default(now()) @map("created_at")
+  completedAt     DateTime?    @map("completed_at")
+
+  company         Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("import_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// APPLICATION (Bewerbungen) - Enterprise
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Application {
+  id                    String            @id @default(uuid())
+  jobPostId             String            @map("job_post_id")
+  companyId             String            @map("company_id")
+  userId                String?           @map("user_id")
+
+  firstName             String            @map("first_name") @db.VarChar(100)
+  lastName              String            @map("last_name") @db.VarChar(100)
+  email                 String            @db.VarChar(255)
+  phone                 String?           @db.VarChar(30)
+
+  birthDate             DateTime?         @map("birth_date") @db.Date
+  postalCode            String?           @map("postal_code") @db.VarChar(10)
+  city                  String?           @db.VarChar(100)
+
+  message               String?           @db.Text
+  anschreiben           String?           @db.Text
+  schulabschluss        String?           @db.VarChar(100)
+  abschlussjahr         Int?
+  notendurchschnitt     Decimal?          @db.Decimal(3, 1)
+  berufserfahrungJahre  Int?              @map("berufserfahrung_jahre")
+  gehaltsvorstellung    String?           @db.VarChar(50)
+  fruehesterStart       DateTime?         @map("fruehester_start") @db.Date
+  customFields          Json?             @map("custom_fields")
+
+  sourceChannel         String?           @map("source_channel") @db.VarChar(100)
+  newsletterOptIn       Boolean           @default(false) @map("newsletter_opt_in")
+
+  status                ApplicationStatus @default(NEW)
+  source                ApplicationSource @default(WEBSITE)
+  interneNotizen        String?           @map("interne_notizen") @db.Text
+  rating                Int?
+
+  datenschutzAkzeptiert Boolean           @default(false) @map("datenschutz_akzeptiert")
+
+  portalId              Int               @default(1) @map("portal_id")
+
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  jobPost               JobPost           @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  company               Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documents             ApplicationDocument[]
+
+  @@index([companyId])
+  @@index([jobPostId])
+  @@index([status])
+  @@index([email])
+  @@map("applications")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// APPLICATION_DOCUMENT (Bewerbungsdokumente) - Enterprise
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ApplicationDocument {
+  id              String       @id @default(uuid())
+  applicationId   String       @map("application_id")
+
+  dokumentTyp     DocumentType @default(SONSTIGES) @map("dokument_typ")
+  filename        String       @db.VarChar(255)
+  originalName    String       @map("original_name") @db.VarChar(255)
+  mimeType        String       @map("mime_type") @db.VarChar(100)
+  fileSize        Int          @map("file_size")
+  storagePath     String       @map("storage_path") @db.VarChar(500)
+
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  application     Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("application_documents")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// APPLICATION_FORM_CONFIG (Formular-Konfiguration pro Firma) - Enterprise
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ApplicationFormConfig {
+  id                      String   @id @default(uuid())
+  companyId               String   @unique @map("company_id")
+
+  activeFields            Json     @default("[\"firstName\",\"lastName\",\"email\",\"message\"]") @map("active_fields")
+  requiredFields          Json     @default("[\"firstName\",\"lastName\",\"email\"]") @map("required_fields")
+  customFields            Json     @default("[]") @map("custom_fields")
+
+  allowAppApplication     Boolean  @default(true) @map("allow_app_application")
+  allowWebsiteApplication Boolean  @default(true) @map("allow_website_application")
+  externalApplicationUrl  String?  @map("external_application_url") @db.VarChar(500)
+
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  company                 Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("application_form_configs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// API_KEY (API-Schluessel) - Enterprise
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ApiKey {
+  id              String    @id @default(uuid())
+  companyId       String    @map("company_id")
+
+  name            String    @db.VarChar(100)
+  keyPrefix       String    @map("key_prefix") @db.VarChar(12)
+  keyHash         String    @unique @map("key_hash") @db.VarChar(64)
+
+  permissions     Json      @default("[\"read\"]")
+  rateLimit       Int       @default(1000) @map("rate_limit")
+  allowedIps      Json?     @map("allowed_ips")
+  allowedDomains  Json?     @map("allowed_domains")
+
+  isActive        Boolean   @default(true) @map("is_active")
+  lastUsedAt      DateTime? @map("last_used_at")
+  expiresAt       DateTime? @map("expires_at")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  usageLogs       ApiUsageLog[]
+
+  @@index([companyId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// API_USAGE_LOG (API-Nutzung) - Enterprise
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ApiUsageLog {
+  id              String   @id @default(uuid())
+  apiKeyId        String   @map("api_key_id")
+
+  endpoint        String   @db.VarChar(255)
+  method          String   @db.VarChar(10)
+  statusCode      Int      @map("status_code")
+  ip              String?  @db.VarChar(45)
+  responseTimeMs  Int?     @map("response_time_ms")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  apiKey          ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@map("api_usage_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WEBHOOK (Webhook-Konfiguration) - Enterprise
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Webhook {
+  id              String    @id @default(uuid())
+  companyId       String    @map("company_id")
+
+  url             String    @db.VarChar(500)
+  events          Json      @default("[\"application.created\"]")
+  secret          String    @db.VarChar(64)
+
+  isActive        Boolean   @default(true) @map("is_active")
+  lastTriggeredAt DateTime? @map("last_triggered_at")
+  failureCount    Int       @default(0) @map("failure_count")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("webhooks")
 }
