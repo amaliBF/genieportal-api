@@ -512,6 +512,7 @@ model Company {
 
   subscriptionPlan      SubscriptionPlan @default(FREE) @map("subscription_plan")
   subscriptionStatus    SubscriptionStatus? @map("subscription_status")
+  planValidUntil        DateTime? @map("plan_valid_until")
   stripeCustomerId      String?   @map("stripe_customer_id") @db.VarChar(100)
   stripeSubscriptionId  String?   @map("stripe_subscription_id") @db.VarChar(100)
   paypalSubscriptionId  String?   @map("paypal_subscription_id") @db.VarChar(100)
@@ -543,6 +544,7 @@ model Company {
   portal                Portal    @relation(fields: [portalId], references: [id])
   customer              Customer? @relation(fields: [customerId], references: [id])
   companyBereiche       CompanyBereich[]
+  couponRedemptions     CouponRedemption[]
 
   @@index([postalCode])
   @@index([status])
@@ -1140,4 +1142,46 @@ model EmailLog {
   @@index([template])
   @@index([sentAt])
   @@map("email_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COUPONS (Gutschein-System)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Coupon {
+  id              String           @id @default(uuid())
+  code            String           @unique @db.VarChar(50)
+  planType        SubscriptionPlan @default(PRO) @map("plan_type")
+  durationMonths  Int              @default(3) @map("duration_months")
+  description     String?          @db.VarChar(255)
+  campaign        String?          @db.VarChar(100)
+  maxRedemptions  Int?             @map("max_redemptions")
+  redemptionCount Int              @default(0) @map("redemption_count")
+  validFrom       DateTime         @default(now()) @map("valid_from")
+  validUntil      DateTime?        @map("valid_until")
+  isActive        Boolean          @default(true) @map("is_active")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  redemptions     CouponRedemption[]
+
+  @@index([code])
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  id            String           @id @default(uuid())
+  couponId      String           @map("coupon_id")
+  companyId     String           @map("company_id")
+  planType      SubscriptionPlan @map("plan_type")
+  startDate     DateTime         @default(now()) @map("start_date")
+  endDate       DateTime         @map("end_date")
+  redeemedAt    DateTime         @default(now()) @map("redeemed_at")
+  redeemedByIp  String?          @db.VarChar(50) @map("redeemed_by_ip")
+
+  coupon        Coupon           @relation(fields: [couponId], references: [id])
+  company       Company          @relation(fields: [companyId], references: [id])
+
+  @@unique([couponId, companyId])
+  @@map("coupon_redemptions")
 }

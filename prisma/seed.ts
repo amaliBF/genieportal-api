@@ -533,6 +533,77 @@ async function main() {
   }
 
   console.log(`\nDone! Seeded ${professions.length} professions.`);
+
+  // ─── COUPONS ──────────────────────────────────────────────────────────────
+  console.log('\nSeeding coupons...');
+
+  const coupons = [
+    {
+      code: 'GENIE-START-2026',
+      planType: 'PRO' as const,
+      durationMonths: 3,
+      description: 'Willkommens-Gutschein: 3 Monate PRO kostenlos',
+      campaign: 'Launch 2026',
+      maxRedemptions: 100,
+    },
+    {
+      code: 'GENIE-IHK-SCHWABEN',
+      planType: 'PRO' as const,
+      durationMonths: 6,
+      description: 'IHK Schwaben Partner-Gutschein: 6 Monate PRO',
+      campaign: 'IHK Schwaben',
+      maxRedemptions: 50,
+    },
+    {
+      code: 'GENIE-IHK-MUENCHEN',
+      planType: 'PRO' as const,
+      durationMonths: 6,
+      description: 'IHK München Partner-Gutschein: 6 Monate PRO',
+      campaign: 'IHK München',
+      maxRedemptions: 50,
+    },
+    {
+      code: 'GENIE-HANDWERK-2026',
+      planType: 'PRO' as const,
+      durationMonths: 3,
+      description: 'Handwerkskammer-Gutschein: 3 Monate PRO',
+      campaign: 'Handwerk 2026',
+      maxRedemptions: 200,
+    },
+    {
+      code: 'GENIE-PARTNER',
+      planType: 'ENTERPRISE' as const,
+      durationMonths: 12,
+      description: 'Partner-Gutschein: 12 Monate ENTERPRISE',
+      campaign: 'Partner',
+      maxRedemptions: 10,
+    },
+    {
+      code: 'GENIE-FRIEND',
+      planType: 'STARTER' as const,
+      durationMonths: 1,
+      description: 'Freunde-Gutschein: 1 Monat STARTER',
+      campaign: 'Referral',
+      maxRedemptions: 500,
+    },
+  ];
+
+  for (const coupon of coupons) {
+    await prisma.coupon.upsert({
+      where: { code: coupon.code },
+      update: {
+        planType: coupon.planType,
+        durationMonths: coupon.durationMonths,
+        description: coupon.description,
+        campaign: coupon.campaign,
+        maxRedemptions: coupon.maxRedemptions,
+      },
+      create: coupon,
+    });
+    console.log(`  Seeded coupon: ${coupon.code}`);
+  }
+
+  console.log(`Done! Seeded ${coupons.length} coupons.`);
 }
 
 main()

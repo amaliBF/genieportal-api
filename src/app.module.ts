@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { UploadModule } from './upload/upload.module';
@@ -24,10 +25,12 @@ import { PortalModule } from './portal/portal.module';
 import { CustomerModule } from './customer/customer.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { SecurityModule } from './common/security/security.module';
+import { CouponModule } from './coupon/coupon.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     // Rate Limiting: 100 Requests pro 15 Minuten (global)
     ThrottlerModule.forRoot([
       {
@@ -68,6 +71,7 @@ import { SecurityModule } from './common/security/security.module';
     CustomerModule,
     AuditLogModule,
     SecurityModule,
+    CouponModule,
   ],
   providers: [
     {

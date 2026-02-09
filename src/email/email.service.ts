@@ -742,6 +742,61 @@ export class EmailService {
     return this.send(this.adminEmail, `Kontaktanfrage: ${subject}`, html, 'contact-form');
   }
 
+  // ─── PLAN EXPIRED EMAIL ──────────────────────────────────────────────────
+
+  async sendPlanExpiredEmail(
+    to: string,
+    companyName: string,
+  ): Promise<boolean> {
+    const html = this.wrap(
+      [
+        this.heading('Ihr Premium-Plan ist abgelaufen'),
+        this.greeting(companyName),
+        this.paragraph(
+          'Ihr Premium-Plan bei Genie ist abgelaufen. Ihr Konto wurde auf den kostenlosen Plan zur&uuml;ckgestuft.',
+        ),
+        this.paragraph(
+          'Um weiterhin alle Premium-Funktionen nutzen zu k&ouml;nnen, verl&auml;ngern Sie Ihr Abonnement oder l&ouml;sen Sie einen neuen Gutschein-Code ein.',
+        ),
+        ctaButton('Plan erneuern', `${this.dashboardUrl}/settings`),
+        this.infoBox(
+          'Ihre Stellen und Daten bleiben erhalten. Einige Funktionen sind im kostenlosen Plan jedoch eingeschr&auml;nkt.',
+        ),
+        this.signature(),
+      ].join('\n'),
+      'Ihr Premium-Plan ist abgelaufen',
+    );
+
+    return this.send(to, 'Ihr Premium-Plan ist abgelaufen', html, 'plan-expired');
+  }
+
+  // ─── PLAN EXPIRING EMAIL ────────────────────────────────────────────────────
+
+  async sendPlanExpiringEmail(
+    to: string,
+    companyName: string,
+    expiresAt: string,
+  ): Promise<boolean> {
+    const html = this.wrap(
+      [
+        this.heading('Ihr Plan l&auml;uft bald ab'),
+        this.greeting(companyName),
+        this.paragraph(
+          `Ihr Premium-Plan bei Genie l&auml;uft am <strong>${this.escapeHtml(expiresAt)}</strong> ab.`,
+        ),
+        this.paragraph(
+          'Verl&auml;ngern Sie Ihr Abonnement oder l&ouml;sen Sie einen neuen Gutschein ein, ' +
+          'um weiterhin alle Premium-Funktionen zu nutzen.',
+        ),
+        ctaButton('Plan verl&auml;ngern', `${this.dashboardUrl}/settings`),
+        this.signature(),
+      ].join('\n'),
+      'Ihr Premium-Plan laeuft bald ab',
+    );
+
+    return this.send(to, `Ihr Plan laeuft am ${expiresAt} ab`, html, 'plan-expiring');
+  }
+
   // ─── UTILITIES ──────────────────────────────────────────────────────────────
 
   private escapeHtml(text: string): string {
