@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class PublicApiService {
@@ -136,5 +137,65 @@ export class PublicApiService {
         logoUrl: true, website: true, employeeCount: true,
       },
     });
+  }
+
+  // ─── Webhooks ────────────────────────────────────────────────────────────
+
+  private readonly VALID_EVENTS = [
+    'application.created', 'application.status_changed',
+    'job.created', 'job.updated', 'job.deleted',
+  ];
+
+  async listWebhooks(companyId: string) {
+    return this.prisma.webhook.findMany({
+      where: { companyId },
+      select: {
+        id: true, url: true, events: true, isActive: true,
+        lastTriggeredAt: true, failureCount: true, createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createWebhook(companyId: string, data: { url: string; events: string[] }) {
+    if (!data.url || !data.url.startsWith('https://')) {
+      throw new BadRequestException('Webhook-URL muss mit https:// beginnen');
+    }
+    const events = (data.events || []).filter(e => this.VALID_EVENTS.includes(e));
+    if (events.length === 0) {
+      throw new BadRequestException(`Mindestens ein gueltiges Event erforderlich: ${this.VALID_EVENTS.join(', ')}`);
+    }
+    const secret = randomBytes(32).toString('hex');
+    return this.prisma.webhook.create({
+      data: { companyId, url: data.url, events, secret },
+    });
+  }
+
+  async updateWebhook(companyId: string, id: string, data: { url?: string; events?: string[]; isActive?: boolean }) {
+    const webhook = await this.prisma.webhook.findUnique({ where: { id } });
+    if (!webhook || webhook.companyId !== companyId) throw new NotFoundException('Webhook nicht gefunden');
+
+    const update: any = {};
+    if (data.url !== undefined) {
+      if (!data.url.startsWith('https://')) throw new BadRequestException('Webhook-URL muss mit https:// beginnen');
+      update.url = data.url;
+    }
+    if (data.events !== undefined) {
+      const events = data.events.filter(e => this.VALID_EVENTS.includes(e));
+      if (events.length === 0) throw new BadRequestException('Mindestens ein gueltiges Event erforderlich');
+      update.events = events;
+    }
+    if (data.isActive !== undefined) {
+      update.isActive = data.isActive;
+      if (data.isActive) update.failureCount = 0; // Reset failures on re-enable
+    }
+    return this.prisma.webhook.update({ where: { id }, data: update });
+  }
+
+  async deleteWebhook(companyId: string, id: string) {
+    const webhook = await this.prisma.webhook.findUnique({ where: { id } });
+    if (!webhook || webhook.companyId !== companyId) throw new NotFoundException('Webhook nicht gefunden');
+    await this.prisma.webhook.delete({ where: { id } });
+    return { success: true };
   }
 }

@@ -17,9 +17,9 @@ export class ImportController {
   constructor(private importService: ImportService) {}
 
   @Post('import')
-  @ApiOperation({ summary: 'CSV hochladen und Vorschau erhalten' })
+  @ApiOperation({ summary: 'CSV/XLSX hochladen und Vorschau erhalten' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadCSV(
     @CurrentUser('companyId') companyId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -29,9 +29,9 @@ export class ImportController {
   }
 
   @Post('import/process')
-  @ApiOperation({ summary: 'CSV hochladen und direkt importieren' })
+  @ApiOperation({ summary: 'CSV/XLSX hochladen und direkt importieren' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   async uploadAndImport(
     @CurrentUser('companyId') companyId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -83,11 +83,24 @@ export class ImportController {
   }
 
   @Get('export/template')
-  @ApiOperation({ summary: 'CSV-Template herunterladen' })
-  async getTemplate(@Res() res: any) {
-    const csv = this.importService.getTemplate();
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename=stellen-import-vorlage.csv');
-    res.send(csv);
+  @ApiOperation({ summary: 'Import-Vorlage herunterladen (CSV/XLSX)' })
+  async getTemplate(@Query('format') format: string = 'csv', @Res() res: any) {
+    const result = this.importService.getTemplate(format);
+
+    if (format === 'xlsx') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=stellen-import-vorlage.xlsx');
+      res.send(result);
+    } else {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename=stellen-import-vorlage.csv');
+      res.send(result);
+    }
+  }
+
+  @Get('import/saved-mappings')
+  @ApiOperation({ summary: 'Gespeicherte Spalten-Mappings' })
+  async getSavedMappings(@CurrentUser('companyId') companyId: string) {
+    return this.importService.getSavedMappings(companyId);
   }
 }

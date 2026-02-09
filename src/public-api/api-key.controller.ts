@@ -1,10 +1,11 @@
 import {
-  Controller, Get, Post, Delete, Param, Query, Body, UseGuards,
+  Controller, Get, Post, Put, Delete, Param, Query, Body, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { PublicApiService } from './public-api.service';
 import { randomBytes, createHash } from 'crypto';
 
 @ApiTags('Dashboard - API-Keys')
@@ -12,7 +13,10 @@ import { randomBytes, createHash } from 'crypto';
 @UseGuards(JwtAuthGuard)
 @Controller('dashboard/api-keys')
 export class ApiKeyController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private publicApiService: PublicApiService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'API-Keys auflisten' })
@@ -104,5 +108,41 @@ export class ApiKeyController {
     });
 
     return { totalRequests, period: '30d', byEndpoint };
+  }
+
+  // ─── Webhook Management ──────────────────────────────────────────────────
+
+  @Get('webhooks')
+  @ApiOperation({ summary: 'Webhooks auflisten' })
+  async listWebhooks(@CurrentUser('companyId') companyId: string) {
+    return this.publicApiService.listWebhooks(companyId);
+  }
+
+  @Post('webhooks')
+  @ApiOperation({ summary: 'Webhook erstellen' })
+  async createWebhook(
+    @CurrentUser('companyId') companyId: string,
+    @Body() body: { url: string; events: string[] },
+  ) {
+    return this.publicApiService.createWebhook(companyId, body);
+  }
+
+  @Put('webhooks/:id')
+  @ApiOperation({ summary: 'Webhook aktualisieren' })
+  async updateWebhook(
+    @CurrentUser('companyId') companyId: string,
+    @Param('id') id: string,
+    @Body() body: { url?: string; events?: string[]; isActive?: boolean },
+  ) {
+    return this.publicApiService.updateWebhook(companyId, id, body);
+  }
+
+  @Delete('webhooks/:id')
+  @ApiOperation({ summary: 'Webhook loeschen' })
+  async deleteWebhook(
+    @CurrentUser('companyId') companyId: string,
+    @Param('id') id: string,
+  ) {
+    return this.publicApiService.deleteWebhook(companyId, id);
   }
 }

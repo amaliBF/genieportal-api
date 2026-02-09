@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { parse } from 'csv-parse/sync';
+import * as XLSX from 'xlsx';
 
 const KNOWN_COLUMNS: Record<string, string> = {
   titel: 'title', title: 'title', stellentitel: 'title',
@@ -23,26 +24,43 @@ const KNOWN_COLUMNS: Record<string, string> = {
 export class ImportService {
   constructor(private prisma: PrismaService) {}
 
-  async parseCSV(companyId: string, file: Express.Multer.File) {
+  private parseFile(file: Express.Multer.File): Record<string, string>[] {
+    const ext = (file.originalname || '').toLowerCase().split('.').pop();
+
+    if (ext === 'xlsx' || ext === 'xls') {
+      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) throw new BadRequestException('Die Excel-Datei enthält keine Arbeitsblätter');
+      const sheet = workbook.Sheets[sheetName];
+      const records = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
+      if (records.length === 0) throw new BadRequestException('Die Excel-Datei enthält keine Daten');
+      return records;
+    }
+
+    // CSV/TSV
     let content = file.buffer.toString('utf-8');
-    // Remove BOM
     if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
 
-    let records: any[];
     try {
-      records = parse(content, {
+      const records = parse(content, {
         columns: true,
         delimiter: [';', ',', '\t'],
         skip_empty_lines: true,
         trim: true,
         relax_column_count: true,
-      });
+      }) as Record<string, string>[];
+      if (records.length === 0) throw new BadRequestException('Die Datei enthält keine Daten');
+      return records;
     } catch (e) {
-      throw new BadRequestException(`CSV konnte nicht gelesen werden: ${(e as Error).message}`);
+      throw new BadRequestException(`Datei konnte nicht gelesen werden: ${(e as Error).message}`);
     }
+  }
+
+  async parseCSV(companyId: string, file: Express.Multer.File) {
+    const records = this.parseFile(file);
 
     if (records.length === 0) {
-      throw new BadRequestException('Die CSV-Datei enthält keine Daten');
+      throw new BadRequestException('Die Datei enthält keine Daten');
     }
 
     const columns = Object.keys(records[0]);
@@ -125,16 +143,7 @@ export class ImportService {
     publishImmediately?: boolean,
     showOnWebsite?: boolean,
   ) {
-    let content = file.buffer.toString('utf-8');
-    if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
-
-    const records = parse(content, {
-      columns: true,
-      delimiter: [';', ',', '\t'],
-      skip_empty_lines: true,
-      trim: true,
-      relax_column_count: true,
-    });
+    const records = this.parseFile(file);
 
     const importLog = await this.prisma.importLog.create({
       data: {
@@ -293,10 +302,35 @@ export class ImportService {
     return '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
   }
 
-  getTemplate(): string {
+  getTemplate(format: string = 'csv'): string | Buffer {
     const headers = ['Titel', 'Beschreibung', 'Anforderungen', 'Benefits', 'PLZ', 'Stadt', '1. Lehrjahr', '2. Lehrjahr', '3. Lehrjahr', 'Startdatum', 'Dauer (Monate)', 'Plaetze', 'Beruf'];
     const example = ['Ausbildung Kaufmann/frau (m/w/d)', 'Spannende Ausbildung...', 'Guter Realschulabschluss', 'Uebernahmegarantie', '10115', 'Berlin', '950', '1050', '1150', '2026-09-01', '36', '2', 'Kaufmann/frau für Büromanagement'];
+
+    if (format === 'xlsx') {
+      const ws = XLSX.utils.aoa_to_sheet([headers, example]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Vorlage');
+      return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    }
+
     return '\uFEFF' + headers.join(';') + '\n' + example.join(';') + '\n';
+  }
+
+  // ─── Saved Column Mappings ────────────────────────────────────────────────
+
+  async getSavedMappings(companyId: string) {
+    const logs = await this.prisma.importLog.findMany({
+      where: { companyId, status: 'COMPLETED' },
+      select: { id: true, filename: true, columnMapping: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+    return logs.map(l => ({
+      id: l.id,
+      filename: l.filename,
+      mapping: l.columnMapping,
+      usedAt: l.createdAt,
+    }));
   }
 
   private mapRow(row: Record<string, string>, mapping: Record<string, string>): Record<string, string> {

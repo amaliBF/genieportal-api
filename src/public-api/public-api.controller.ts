@@ -102,4 +102,37 @@ export class PublicApiController {
   async getCompany(@ApiCompany('companyId') companyId: string) {
     return this.publicApiService.getCompany(companyId);
   }
+
+  // ─── Webhooks ────────────────────────────────────────────────────────────
+
+  @Get('webhooks')
+  @ApiOperation({ summary: 'Webhooks auflisten' })
+  async listWebhooks(@ApiCompany('companyId') companyId: string) {
+    return this.publicApiService.listWebhooks(companyId);
+  }
+
+  @Post('webhooks')
+  @ApiOperation({ summary: 'Webhook erstellen' })
+  async createWebhook(
+    @ApiCompany('companyId') companyId: string,
+    @Body() body: { url: string; events: string[] },
+  ) {
+    return this.publicApiService.createWebhook(companyId, body);
+  }
+
+  @Put('webhooks/:id')
+  @ApiOperation({ summary: 'Webhook aktualisieren' })
+  async updateWebhook(
+    @ApiCompany('companyId') companyId: string,
+    @Param('id') id: string,
+    @Body() body: { url?: string; events?: string[]; isActive?: boolean },
+  ) {
+    return this.publicApiService.updateWebhook(companyId, id, body);
+  }
+
+  @Delete('webhooks/:id')
+  @ApiOperation({ summary: 'Webhook loeschen' })
+  async deleteWebhook(@ApiCompany('companyId') companyId: string, @Param('id') id: string) {
+    return this.publicApiService.deleteWebhook(companyId, id);
+  }
 }

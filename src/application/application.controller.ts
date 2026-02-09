@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Param, Query, Body, UseGuards,
+  Controller, Get, Post, Put, Delete, Param, Query, Body, UseGuards,
   UseInterceptors, UploadedFiles, Res,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -72,9 +72,15 @@ export class ApplicationDashboardController {
   @ApiOperation({ summary: 'Bewerbungen als CSV exportieren' })
   async exportApplications(
     @CurrentUser('companyId') companyId: string,
-    @Res() res: any,
+    @Query('status') status?: string,
+    @Query('jobPostId') jobPostId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Res() res?: any,
   ) {
-    const csv = await this.applicationService.exportApplications(companyId);
+    const csv = await this.applicationService.exportApplications(companyId, {
+      status, jobPostId, dateFrom, dateTo,
+    });
     const date = new Date().toISOString().split('T')[0];
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=bewerbungen-export-${date}.csv`);
@@ -118,6 +124,15 @@ export class ApplicationDashboardController {
     @Body() dto: UpdateApplicationRatingDto,
   ) {
     return this.applicationService.updateRating(companyId, id, dto.rating);
+  }
+
+  @Delete('applications/:id')
+  @ApiOperation({ summary: 'Bewerbung loeschen (DSGVO)' })
+  async deleteApplication(
+    @CurrentUser('companyId') companyId: string,
+    @Param('id') id: string,
+  ) {
+    return this.applicationService.deleteApplication(companyId, id);
   }
 
   @Get('application-form-config')

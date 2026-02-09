@@ -1,15 +1,21 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { UploadService } from '../upload/upload.service';
+import { BunnyStorageService } from '../upload/bunny-storage.service';
 import { WebhookService } from './webhook.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class ApplicationService {
+  private readonly logger = new Logger(ApplicationService.name);
+
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
     private uploadService: UploadService,
+    private bunnyStorage: BunnyStorageService,
     private webhookService: WebhookService,
   ) {}
 
@@ -84,13 +90,31 @@ export class ApplicationService {
       },
     });
 
-    // Upload documents
+    // Upload documents (BunnyCDN with local fallback)
     if (files?.length) {
       for (const file of files.slice(0, 5)) {
         if (file.size > 5 * 1024 * 1024) continue;
-        const storagePath = await this.uploadService.saveFile(
+
+        // Always save locally first
+        const localPath = await this.uploadService.saveFile(
           file, 'applications', `${job.companyId}/${application.id}`,
         );
+
+        let storagePath = localPath;
+
+        // Upload to BunnyCDN if configured
+        if (this.bunnyStorage.isConfigured) {
+          try {
+            const ext = path.extname(file.originalname).toLowerCase();
+            const remotePath = `applications/${job.companyId}/${application.id}/${path.basename(localPath)}`;
+            const uploadDir = process.env.UPLOAD_DIR || '/var/www/vhosts/ausbildungsgenie.de/uploads';
+            const fullLocalPath = path.join(uploadDir, localPath);
+            storagePath = await this.bunnyStorage.uploadFile(fullLocalPath, remotePath);
+          } catch (err) {
+            this.logger.warn(`BunnyCDN upload failed for doc, using local: ${(err as Error).message}`);
+          }
+        }
+
         await this.prisma.applicationDocument.create({
           data: {
             applicationId: application.id,
@@ -254,20 +278,65 @@ export class ApplicationService {
 
   // ─── DASHBOARD: Export applications ───────────────────────────────────────
 
-  async exportApplications(companyId: string) {
+  async exportApplications(companyId: string, filters?: {
+    status?: string; jobPostId?: string; dateFrom?: string; dateTo?: string;
+  }) {
+    const where: any = { companyId };
+    if (filters?.status) where.status = filters.status;
+    if (filters?.jobPostId) where.jobPostId = filters.jobPostId;
+    if (filters?.dateFrom || filters?.dateTo) {
+      where.createdAt = {};
+      if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom);
+      if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo + 'T23:59:59');
+    }
+
     const apps = await this.prisma.application.findMany({
-      where: { companyId },
+      where,
       include: { jobPost: { select: { title: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
-    const headers = ['Vorname', 'Nachname', 'E-Mail', 'Telefon', 'Stelle', 'Status', 'Bewertung', 'Datum'];
+    const escape = (v: string) => v.includes(';') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v;
+    const headers = ['Vorname', 'Nachname', 'E-Mail', 'Telefon', 'Stelle', 'Status', 'Bewertung', 'Datum', 'Quelle'];
     const rows = apps.map(a => [
-      a.firstName, a.lastName, a.email, a.phone || '',
-      a.jobPost?.title || '', a.status, a.rating?.toString() || '',
-      new Date(a.createdAt).toISOString().split('T')[0],
+      escape(a.firstName), escape(a.lastName), escape(a.email), escape(a.phone || ''),
+      escape(a.jobPost?.title || ''), a.status, a.rating?.toString() || '',
+      new Date(a.createdAt).toISOString().split('T')[0], a.source || '',
     ].join(';'));
 
     return '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+  }
+
+  // ─── DASHBOARD: Delete application (DSGVO) ─────────────────────────────────
+
+  async deleteApplication(companyId: string, id: string) {
+    const app = await this.prisma.application.findUnique({
+      where: { id },
+      include: { documents: true },
+    });
+    if (!app || app.companyId !== companyId) throw new NotFoundException('Bewerbung nicht gefunden');
+
+    // Delete documents from storage
+    for (const doc of app.documents) {
+      try {
+        if (doc.storagePath.startsWith('http')) {
+          // BunnyCDN URL - extract remote path
+          const cdnUrl = process.env.BUNNY_CDN_URL || 'https://cdn.genieportal.de';
+          const remotePath = doc.storagePath.replace(cdnUrl + '/', '');
+          await this.bunnyStorage.deleteFile(remotePath);
+        } else {
+          // Local file
+          await this.uploadService.deleteFile(doc.storagePath);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to delete doc file ${doc.storagePath}: ${(err as Error).message}`);
+      }
+    }
+
+    // Delete documents from DB, then application
+    await this.prisma.applicationDocument.deleteMany({ where: { applicationId: id } });
+    await this.prisma.application.delete({ where: { id } });
+
+    return { success: true, message: 'Bewerbung und Dokumente geloescht (DSGVO)' };
   }
 }
