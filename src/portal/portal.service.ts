@@ -7,7 +7,7 @@ export class PortalService {
 
   async findAllPublic() {
     return this.prisma.portal.findMany({
-      where: { status: 'LIVE' },
+      where: { status: 'LIVE', kategorie: 'jobs' },
       select: {
         id: true,
         name: true,
