@@ -40,6 +40,7 @@ import { SalaryModule } from './salary/salary.module';
 import { SocialModule } from './social/social.module';
 import { InterviewModule } from './interview/interview.module';
 import { TalentPoolModule } from './talent-pool/talent-pool.module';
+import { SsoModule } from './sso/sso.module';
 
 @Module({
   imports: [
@@ -100,6 +101,7 @@ import { TalentPoolModule } from './talent-pool/talent-pool.module';
     SocialModule,
     InterviewModule,
     TalentPoolModule,
+    SsoModule,
   ],
   providers: [
     {

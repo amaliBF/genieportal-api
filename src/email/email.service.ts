@@ -929,6 +929,113 @@ export class EmailService {
     return this.send(to, `🔔 ${jobs.length} neue ${alertName}-Stellen`, html, 'job-alert-digest');
   }
 
+  // ─── SSO: VERIFICATION EMAIL ────────────────────────────────────────────────
+
+  async sendSsoVerificationEmail(
+    to: string,
+    name: string,
+    token: string,
+    domain: string,
+  ): Promise<boolean> {
+    const verifyUrl = `https://auth.genieportal.de/v1/sso/verify-email/${token}`;
+
+    const html = this.wrap(
+      [
+        this.heading('E-Mail-Adresse best&auml;tigen'),
+        this.greeting(name),
+        this.paragraph(
+          'Vielen Dank f&uuml;r deine Registrierung bei Genie! ' +
+          'Bitte best&auml;tige deine E-Mail-Adresse, damit du alle Funktionen nutzen kannst.',
+        ),
+        ctaButton('E-Mail best&auml;tigen', verifyUrl),
+        fallbackLink(verifyUrl),
+        this.infoBox(
+          'Dieser Link ist aus Sicherheitsgr&uuml;nden <strong>24 Stunden</strong> g&uuml;ltig. ' +
+          'Falls du dich nicht bei Genie registriert hast, kannst du diese E-Mail ignorieren.',
+        ),
+        this.signature(),
+      ].join('\n'),
+      'Bitte best&auml;tige deine E-Mail-Adresse f&uuml;r Genie',
+    );
+
+    return this.send(to, 'Bitte best\u00e4tige deine E-Mail-Adresse', html, 'sso-verification');
+  }
+
+  // ─── SSO: WELCOME EMAIL ───────────────────────────────────────────────────
+
+  async sendSsoWelcomeEmail(to: string, name: string): Promise<boolean> {
+    const portalLinks = [
+      { name: 'Ausbildungsgenie', url: 'https://ausbildungsgenie.de', desc: 'Ausbildungspl&auml;tze per Swipe' },
+      { name: 'Praktikumsgenie', url: 'https://praktikumsgenie.de', desc: 'Praktika f&uuml;r Sch&uuml;ler &amp; Studierende' },
+      { name: 'Berufsgenie', url: 'https://berufsgenie.de', desc: 'Festanstellungen &amp; Karriere' },
+      { name: 'Minijobgenie', url: 'https://minijobgenie.de', desc: 'Minijobs &amp; Nebenjobs' },
+      { name: 'Werkstudentengenie', url: 'https://werkstudentengenie.de', desc: 'Werkstudentenstellen' },
+    ];
+
+    const portalListHtml = portalLinks.map((p) => `
+      <tr>
+        <td style="padding:8px 0;border-bottom:1px solid #F3F4F6;">
+          <a href="${p.url}" style="font-size:15px;font-weight:600;color:#6366F1;text-decoration:none;">${p.name}</a>
+          <p style="margin:2px 0 0;font-size:13px;color:#6B7280;">${p.desc}</p>
+        </td>
+      </tr>
+    `).join('');
+
+    const html = this.wrap(
+      [
+        this.heading('Willkommen bei Genie! &#127881;'),
+        this.greeting(name),
+        this.paragraph(
+          'Deine E-Mail wurde erfolgreich best&auml;tigt. ' +
+          'Du bist jetzt auf allen Genie-Portalen eingeloggt!',
+        ),
+        this.paragraph('Entdecke unsere Portale:'),
+        `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:0 0 24px;">
+          ${portalListHtml}
+        </table>`,
+        this.infoBox(
+          'Tipp: Du bist automatisch auf allen Genie-Portalen angemeldet &ndash; ein Konto f&uuml;r alles!',
+        ),
+        this.signature(),
+      ].join('\n'),
+      'Willkommen bei Genie &ndash; dein Konto ist bereit!',
+    );
+
+    return this.send(to, 'Willkommen bei Genie!', html, 'sso-welcome');
+  }
+
+  // ─── SSO: PASSWORD RESET EMAIL ────────────────────────────────────────────
+
+  async sendSsoPasswordResetEmail(
+    to: string,
+    name: string,
+    token: string,
+  ): Promise<boolean> {
+    const resetUrl = `https://auth.genieportal.de/v1/sso/reset-password?token=${token}`;
+
+    const html = this.wrap(
+      [
+        this.heading('Passwort zur&uuml;cksetzen'),
+        this.greeting(name),
+        this.paragraph(
+          'Du hast angefordert, dein Passwort zur&uuml;ckzusetzen. ' +
+          'Klicke auf den Button, um ein neues Passwort zu vergeben:',
+        ),
+        ctaButton('Neues Passwort vergeben', resetUrl),
+        fallbackLink(resetUrl),
+        this.infoBox(
+          'Dieser Link ist aus Sicherheitsgr&uuml;nden <strong>1 Stunde</strong> g&uuml;ltig. ' +
+          'Falls du kein neues Passwort angefordert hast, ignoriere diese E-Mail &ndash; ' +
+          'dein Passwort bleibt unver&auml;ndert.',
+        ),
+        this.signature(),
+      ].join('\n'),
+      'Setze dein Passwort f&uuml;r Genie zur&uuml;ck',
+    );
+
+    return this.send(to, 'Passwort zur\u00fccksetzen', html, 'sso-password-reset');
+  }
+
   // ─── UTILITIES ──────────────────────────────────────────────────────────────
 
   private escapeHtml(text: string): string {

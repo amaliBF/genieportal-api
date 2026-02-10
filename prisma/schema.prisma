@@ -572,6 +572,17 @@ model User {
   // FCM Token
   fcmToken              String?    @map("fcm_token") @db.VarChar(500)
 
+  // SSO-Felder
+  ssoEnabled            Boolean    @default(false) @map("sso_enabled")
+  registeredVia         String?    @map("registered_via") @db.VarChar(100)
+  lastLoginDomain       String?    @map("last_login_domain") @db.VarChar(100)
+  activeDomains         Json?      @map("active_domains")
+  lifePhase             String?    @map("life_phase") @db.VarChar(50)
+  newsletterConsent     Boolean    @default(false) @map("newsletter_consent")
+  newsletterConsentAt   DateTime?  @map("newsletter_consent_at")
+  ssoRefreshToken       String?    @map("sso_refresh_token") @db.Text
+  ssoRefreshTokenExp    DateTime?  @map("sso_refresh_token_exp")
+
   // Multi-Portal (NEU)
   portalId              Int        @default(1) @map("portal_id")
 
@@ -626,11 +637,31 @@ model User {
   referralCodes         ReferralCode[]
   skillTestResults      SkillTestResult[]
   talentPools           TalentPool[]
+  ssoRefreshTokens      SsoRefreshToken[]
 
   @@index([postalCode])
   @@index([status])
   @@index([email])
   @@map("users")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SSO_REFRESH_TOKEN (SSO Token-Rotation)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model SsoRefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id")
+  token     String   @unique @db.VarChar(512)
+  device    String?  @db.VarChar(255)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sso_refresh_tokens")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

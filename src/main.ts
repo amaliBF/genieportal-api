@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -20,6 +21,8 @@ async function bootstrap() {
     }),
   );
 
+  app.use(cookieParser());
+
   app.setGlobalPrefix('v1');
 
   const WHITELIST = [
@@ -29,6 +32,7 @@ async function bootstrap() {
     'https://dashboard.genieportal.de',
     'https://admin.genieportal.de',
     'https://cdn.genieportal.de',
+    'https://auth.genieportal.de',
     // Portal-Landings (SEO-Seiten)
     'https://ausbildungsgenie.de',
     'https://www.ausbildungsgenie.de',
