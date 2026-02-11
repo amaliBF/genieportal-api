@@ -44,6 +44,8 @@ async function bootstrap() {
     'https://www.minijobgenie.de',
     'https://werkstudentengenie.de',
     'https://www.werkstudentengenie.de',
+    'https://bewerbungs-genie.de',
+    'https://www.bewerbungs-genie.de',
     // Backward-compat (alte Subdomains)
     'https://dashboard.ausbildungsgenie.de',
     'https://admin.ausbildungsgenie.de',
