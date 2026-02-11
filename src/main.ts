@@ -46,6 +46,8 @@ async function bootstrap() {
     'https://www.werkstudentengenie.de',
     'https://bewerbungs-genie.de',
     'https://www.bewerbungs-genie.de',
+    'https://gehaltsgenie.com',
+    'https://www.gehaltsgenie.com',
     // Backward-compat (alte Subdomains)
     'https://dashboard.ausbildungsgenie.de',
     'https://admin.ausbildungsgenie.de',
