@@ -742,6 +742,39 @@ export class EmailService {
     return this.send(this.adminEmail, `Kontaktanfrage: ${subject}`, html, 'contact-form');
   }
 
+  // ─── CONTACT FORM CONFIRMATION (an Absender) ──────────────────────────────
+
+  async sendContactConfirmation(
+    to: string,
+    name: string,
+    subject: string,
+    domain?: string,
+  ): Promise<boolean> {
+    const portalName = domain ? this.portalNameFromDomain(domain) : 'Genieportal';
+
+    const html = this.wrap(
+      [
+        this.heading('Nachricht erhalten &#9989;'),
+        this.greeting(name),
+        this.paragraph(
+          `Vielen Dank f&uuml;r deine Nachricht zum Thema <strong>${this.escapeHtml(subject)}</strong>.`,
+        ),
+        this.paragraph(
+          'Wir haben deine Anfrage erhalten und werden uns so schnell wie m&ouml;glich bei dir melden. ' +
+          'In der Regel antworten wir innerhalb von 24 Stunden.',
+        ),
+        this.infoBox(
+          'Falls du weitere Fragen hast, antworte einfach auf diese E-Mail oder schreibe uns an ' +
+          `<a href="mailto:${this.replyTo}" style="color:#4338CA;">${this.replyTo}</a>.`,
+        ),
+        this.signature(),
+      ].join('\n'),
+      `Wir haben deine Nachricht erhalten`,
+    );
+
+    return this.send(to, `Nachricht erhalten: ${subject} – ${portalName}`, html, 'contact-confirmation');
+  }
+
   // ─── PLAN EXPIRED EMAIL ──────────────────────────────────────────────────
 
   async sendPlanExpiredEmail(
@@ -1034,6 +1067,148 @@ export class EmailService {
     );
 
     return this.send(to, 'Passwort zur\u00fccksetzen', html, 'sso-password-reset');
+  }
+
+  // ─── NEWSLETTER: VERIFICATION EMAIL ──────────────────────────────────────
+
+  async sendNewsletterVerification(
+    to: string,
+    token: string,
+    domain: string,
+  ): Promise<boolean> {
+    const verifyUrl = `${this.appUrl}/v1/api/public/newsletter/verify?token=${token}`;
+    const portalName = this.portalNameFromDomain(domain);
+
+    const html = this.wrap(
+      [
+        this.heading('Newsletter-Anmeldung best&auml;tigen'),
+        this.paragraph(`Hallo,`),
+        this.paragraph(
+          `Du hast dich f&uuml;r den <strong>${this.escapeHtml(portalName)}</strong>-Newsletter angemeldet. ` +
+          'Bitte best&auml;tige deine E-Mail-Adresse, damit wir dich benachrichtigen k&ouml;nnen, sobald die App verf&uuml;gbar ist.',
+        ),
+        ctaButton('Anmeldung best&auml;tigen', verifyUrl),
+        fallbackLink(verifyUrl),
+        this.infoBox(
+          'Falls du dich nicht angemeldet hast, kannst du diese E-Mail einfach ignorieren.',
+        ),
+        this.signature(),
+      ].join('\n'),
+      `Bitte bestaetige deine Newsletter-Anmeldung bei ${portalName}`,
+    );
+
+    return this.send(to, `Newsletter-Anmeldung bestätigen – ${portalName}`, html, 'newsletter-verification');
+  }
+
+  // ─── NEWSLETTER: WELCOME EMAIL ────────────────────────────────────────────
+
+  async sendNewsletterWelcome(
+    to: string,
+    domain: string,
+  ): Promise<boolean> {
+    const portalName = this.portalNameFromDomain(domain);
+
+    const html = this.wrap(
+      [
+        this.heading('Du bist dabei! &#127881;'),
+        this.paragraph(`Hallo,`),
+        this.paragraph(
+          `Vielen Dank f&uuml;r deine Anmeldung zum <strong>${this.escapeHtml(portalName)}</strong>-Newsletter!`,
+        ),
+        this.paragraph(
+          'Wir benachrichtigen dich, sobald die App verf&uuml;gbar ist. ' +
+          'Du bist unter den Ersten, die davon erfahren &ndash; versprochen!',
+        ),
+        this.infoBox(
+          'Bis dahin: Schau gerne auf <a href="https://' + this.escapeHtml(domain) + '" style="color:#4338CA;font-weight:600;">' +
+          this.escapeHtml(domain) + '</a> vorbei &ndash; dort findest du schon jetzt hilfreiche Inhalte.',
+        ),
+        this.signature(),
+      ].join('\n'),
+      `Willkommen beim ${portalName}-Newsletter!`,
+    );
+
+    return this.send(to, `Willkommen beim ${portalName}-Newsletter!`, html, 'newsletter-welcome');
+  }
+
+  // ─── NEWSLETTER: ADMIN NOTIFICATION ───────────────────────────────────────
+
+  async sendAdminNewsletterNotification(
+    email: string,
+    domain: string,
+  ): Promise<boolean> {
+    const portalName = this.portalNameFromDomain(domain);
+
+    const html = this.wrap(
+      [
+        this.heading('Neue Newsletter-Anmeldung'),
+        this.paragraph('Hallo Admin,'),
+        this.paragraph(
+          'Es gibt eine neue Newsletter-Anmeldung:',
+        ),
+        `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+               style="margin:0 0 24px;background-color:#F9FAFB;border-radius:12px;border:1px solid #E5E7EB;">
+          <tr>
+            <td style="padding:20px;">
+              <p style="margin:0 0 8px;font-size:14px;color:#6B7280;">E-Mail</p>
+              <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#1F2937;">${this.escapeHtml(email)}</p>
+              <p style="margin:0 0 8px;font-size:14px;color:#6B7280;">Portal</p>
+              <p style="margin:0;font-size:16px;font-weight:600;color:#6366F1;">${this.escapeHtml(portalName)} (${this.escapeHtml(domain)})</p>
+            </td>
+          </tr>
+        </table>`,
+        this.signature(),
+      ].join('\n'),
+      `Neue Newsletter-Anmeldung auf ${portalName}`,
+    );
+
+    return this.send(this.adminEmail, `Newsletter-Anmeldung: ${email} (${domain})`, html, 'admin-newsletter');
+  }
+
+  // ─── NEWSLETTER: KAMPAGNEN-VERSAND ─────────────────────────────────────────
+
+  async sendNewsletterCampaign(
+    to: string,
+    subject: string,
+    htmlContent: string,
+    unsubscribeToken: string,
+    domain: string,
+  ): Promise<boolean> {
+    const unsubscribeUrl = `${this.appUrl}/v1/api/public/newsletter/unsubscribe?token=${unsubscribeToken}`;
+    const portalName = this.portalNameFromDomain(domain);
+
+    const html = this.wrap(
+      [
+        htmlContent,
+        `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+               style="margin:32px 0 0;border-top:1px solid #E5E7EB;padding-top:16px;">
+          <tr>
+            <td style="text-align:center;">
+              <p style="margin:0;font-size:12px;line-height:18px;color:#9CA3AF;">
+                Du erh&auml;ltst diese E-Mail, weil du den ${this.escapeHtml(portalName)}-Newsletter abonniert hast.<br/>
+                <a href="${unsubscribeUrl}" style="color:#6366F1;text-decoration:underline;">Newsletter abbestellen</a>
+              </p>
+            </td>
+          </tr>
+        </table>`,
+      ].join('\n'),
+      subject,
+    );
+
+    return this.send(to, subject, html, 'newsletter-campaign');
+  }
+
+  // ─── PORTAL NAME HELPER ───────────────────────────────────────────────────
+
+  private portalNameFromDomain(domain: string): string {
+    const map: Record<string, string> = {
+      'werkstudentengenie.de': 'Werkstudentengenie',
+      'ausbildungsgenie.de': 'Ausbildungsgenie',
+      'berufsgenie.de': 'Berufsgenie',
+      'minijobgenie.de': 'Minijobgenie',
+      'praktikumsgenie.de': 'Praktikumsgenie',
+    };
+    return map[domain] || 'Genieportal';
   }
 
   // ─── UTILITIES ──────────────────────────────────────────────────────────────

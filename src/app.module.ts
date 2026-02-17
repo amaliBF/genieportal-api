@@ -41,6 +41,8 @@ import { SocialModule } from './social/social.module';
 import { InterviewModule } from './interview/interview.module';
 import { TalentPoolModule } from './talent-pool/talent-pool.module';
 import { SsoModule } from './sso/sso.module';
+import { NewsletterModule } from './newsletter/newsletter.module';
+import { ContactModule } from './contact/contact.module';
 
 @Module({
   imports: [
@@ -102,6 +104,8 @@ import { SsoModule } from './sso/sso.module';
     InterviewModule,
     TalentPoolModule,
     SsoModule,
+    NewsletterModule,
+    ContactModule,
   ],
   providers: [
     {
