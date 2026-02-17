@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 interface AiMessage {
   role: 'user' | 'assistant';
@@ -29,18 +29,18 @@ export interface SuggestedProfession {
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private anthropic: Anthropic | null = null;
+  private openai: OpenAI | null = null;
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
+    const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (apiKey) {
-      this.anthropic = new Anthropic({ apiKey });
+      this.openai = new OpenAI({ apiKey });
     } else {
       this.logger.warn(
-        'ANTHROPIC_API_KEY ist nicht gesetzt. KI-Antworten werden simuliert.',
+        'OPENAI_API_KEY ist nicht gesetzt. KI-Antworten werden simuliert.',
       );
     }
   }
@@ -254,32 +254,33 @@ export class AiService {
     messages: AiMessage[],
     questionCount: number,
   ): Promise<ParsedAiResponse> {
-    if (!this.anthropic) {
+    if (!this.openai) {
       return this.getMockResponse(questionCount);
     }
 
     try {
       const systemPrompt = await this.buildSystemPrompt(questionCount);
 
-      // Convert our messages to Anthropic format
-      const anthropicMessages = messages.map((msg) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.role === 'assistant' ? this.extractPlainMessage(msg.content) : msg.content,
-      }));
+      // Build OpenAI messages array with system prompt first
+      const openaiMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((msg) => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.role === 'assistant' ? this.extractPlainMessage(msg.content) : msg.content,
+        })),
+      ];
 
-      const response = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-5-20250929',
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
         max_tokens: 1024,
-        system: systemPrompt,
-        messages: anthropicMessages,
+        messages: openaiMessages,
       });
 
-      const textBlock = response.content.find((block) => block.type === 'text');
-      const rawText = textBlock ? textBlock.text : '';
+      const rawText = response.choices[0]?.message?.content || '';
 
       return await this.parseAiResponse(rawText, questionCount);
     } catch (error) {
-      this.logger.error('Fehler bei der Claude API-Anfrage', error);
+      this.logger.error('Fehler bei der OpenAI API-Anfrage', error);
       return this.getMockResponse(questionCount);
     }
   }
