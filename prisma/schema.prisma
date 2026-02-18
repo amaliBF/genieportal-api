@@ -294,6 +294,7 @@ model Portal {
   companyBereiche       CompanyBereich[]
   auditLogs             AuditLog[]
   jobPostPortals        JobPostPortal[]
+  externalJobs          ExternalJob[]
 
   @@map("portals")
 }
@@ -1379,6 +1380,12 @@ enum ImportStatus {
   FAILED
 }
 
+enum ExternalJobSource {
+  ADZUNA
+  JOOBLE
+  CAREERJET
+}
+
 enum ApplicationStatus {
   NEW
   VIEWED
@@ -2296,4 +2303,96 @@ model SkillTestResult {
   @@index([userId])
   @@index([skillTestId])
   @@map("skill_test_results")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXTERNAL JOBS (Adzuna + Jooble + Careerjet Import)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ExternalJob {
+  id              String            @id @default(uuid())
+
+  // Quelle
+  source          ExternalJobSource
+  sourceId        String            @map("source_id") @db.VarChar(255)
+
+  // Stellendaten
+  title           String            @db.VarChar(500)
+  slug            String            @db.VarChar(300)
+  description     String?           @db.Text
+  companyName     String?           @map("company_name") @db.VarChar(255)
+
+  // Ort
+  city            String?           @db.VarChar(100)
+  postalCode      String?           @map("postal_code") @db.VarChar(10)
+  latitude        Decimal?          @db.Decimal(10, 8)
+  longitude       Decimal?          @db.Decimal(11, 8)
+
+  // Gehalt
+  salaryMin       Int?              @map("salary_min")
+  salaryMax       Int?              @map("salary_max")
+  salaryUnit      String?           @map("salary_unit") @db.VarChar(10)
+
+  // Klassifizierung
+  category        String?           @db.VarChar(100)
+  categoryTag     String?           @map("category_tag") @db.VarChar(100)
+  jobType         String            @map("job_type") @db.VarChar(30)
+  portalId        Int               @map("portal_id")
+
+  // Affiliate-Link
+  externalUrl     String            @map("external_url") @db.VarChar(2000)
+
+  // Zeitstempel
+  publishedAt     DateTime?         @map("published_at")
+  expiresAt       DateTime?         @map("expires_at")
+  lastSeenAt      DateTime          @default(now()) @map("last_seen_at")
+
+  // Status
+  isActive        Boolean           @default(true) @map("is_active")
+
+  // Deduplizierung
+  titleHash       String            @map("title_hash") @db.VarChar(64)
+
+  // Analytics
+  clickCount      Int               @default(0) @map("click_count")
+
+  // Timestamps
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  portal          Portal            @relation(fields: [portalId], references: [id])
+
+  @@unique([source, sourceId])
+  @@index([portalId, isActive])
+  @@index([city])
+  @@index([jobType])
+  @@index([titleHash])
+  @@index([publishedAt])
+  @@map("external_jobs")
+}
+
+model ExternalJobImportLog {
+  id               String            @id @default(uuid())
+  source           ExternalJobSource
+  portalId         Int?              @map("portal_id")
+  jobType          String?           @map("job_type") @db.VarChar(30)
+
+  status           ImportStatus      @default(PROCESSING)
+
+  totalFetched     Int               @default(0) @map("total_fetched")
+  newCount         Int               @default(0) @map("new_count")
+  updatedCount     Int               @default(0) @map("updated_count")
+  skippedCount     Int               @default(0) @map("skipped_count")
+  errorCount       Int               @default(0) @map("error_count")
+
+  errorDetails     Json?             @map("error_details")
+  durationMs       Int?              @map("duration_ms")
+
+  startedAt        DateTime          @default(now()) @map("started_at")
+  completedAt      DateTime?         @map("completed_at")
+
+  @@index([source])
+  @@index([startedAt])
+  @@map("external_job_import_logs")
 }

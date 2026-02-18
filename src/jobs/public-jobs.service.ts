@@ -6,6 +6,15 @@ import { ConfigService } from '@nestjs/config';
 export class PublicJobsService {
   private cdnUrl: string;
 
+  // Portal ID → domain mapping for URL generation
+  private readonly PORTAL_DOMAINS: Record<number, string> = {
+    1: 'ausbildungsgenie.de',
+    2: 'praktikumsgenie.de',
+    3: 'berufsgenie.de',
+    4: 'minijobgenie.de',
+    6: 'werkstudentengenie.de',
+  };
+
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
@@ -67,6 +76,43 @@ export class PublicJobsService {
       videoThumbnail: this.getMediaUrl(thumbnail),
       createdAt: job.createdAt.toISOString(),
       url: this.buildJobUrl(job, portalDomain),
+      isExternal: false,
+    };
+  }
+
+  private mapExternalJobListItem(job: any) {
+    const domain = this.PORTAL_DOMAINS[job.portalId] || 'ausbildungsgenie.de';
+    const id8 = job.id.substring(0, 8);
+
+    return {
+      id: job.id,
+      slug: job.slug,
+      title: job.title,
+      beruf: job.category || null,
+      company: {
+        id: null,
+        name: job.companyName || 'Extern',
+        slug: 'extern',
+        logo: null,
+      },
+      standort: {
+        stadt: job.city || null,
+        plz: job.postalCode || null,
+      },
+      gehalt: job.salaryMin
+        ? {
+            min: job.salaryMin,
+            max: job.salaryMax || job.salaryMin,
+            einheit: job.salaryUnit || 'MONTH',
+          }
+        : null,
+      startDatum: null,
+      hasVideo: false,
+      videoThumbnail: null,
+      createdAt: job.createdAt.toISOString(),
+      url: `https://${domain}/stellen/${job.slug}-${id8}`,
+      isExternal: true,
+      externalUrl: job.externalUrl,
     };
   }
 
@@ -81,6 +127,12 @@ export class PublicJobsService {
         { publishedPortals: { some: { portalId } } },
       ];
     }
+    return where;
+  }
+
+  private externalJobWhere(portalId?: number) {
+    const where: any = { isActive: true };
+    if (portalId) where.portalId = portalId;
     return where;
   }
 
@@ -165,7 +217,8 @@ export class PublicJobsService {
     if (params.sort === 'date') orderBy = { createdAt: 'desc' };
     else if (params.sort === 'salary') orderBy = { salaryYear1: 'desc' };
 
-    const [items, total] = await Promise.all([
+    // Internal jobs
+    const [internalItems, internalTotal] = await Promise.all([
       this.prisma.jobPost.findMany({
         where,
         include: this.jobIncludes(),
@@ -176,7 +229,37 @@ export class PublicJobsService {
       this.prisma.jobPost.count({ where }),
     ]);
 
-    // Facets
+    // External jobs (shown after internal)
+    const extWhere = this.externalJobWhere(params.portalId);
+    if (params.q) {
+      extWhere.OR = [
+        { title: { contains: params.q } },
+        { description: { contains: params.q } },
+        { companyName: { contains: params.q } },
+        { category: { contains: params.q } },
+      ];
+    }
+    if (params.stadt) extWhere.city = { contains: params.stadt };
+    if (params.berufsfeld) extWhere.categoryTag = { contains: params.berufsfeld };
+
+    const externalTotal = await this.prisma.externalJob.count({ where: extWhere });
+    const combinedTotal = internalTotal + externalTotal;
+
+    // Build result: internal first, external fills remaining slots
+    let resultItems = internalItems.map((j) => this.mapJobListItem(j));
+    if (resultItems.length < limit) {
+      const extSkip = Math.max(0, skip - internalTotal);
+      const extTake = limit - resultItems.length;
+      const extItems = await this.prisma.externalJob.findMany({
+        where: extWhere,
+        orderBy: { publishedAt: 'desc' },
+        skip: extSkip,
+        take: extTake,
+      });
+      resultItems.push(...extItems.map((j) => this.mapExternalJobListItem(j)));
+    }
+
+    // Facets (internal jobs only)
     const facetWhere = this.baseWhere(params.portalId);
     const [berufsfelderRaw, staedteRaw] = await Promise.all([
       this.prisma.jobPost.groupBy({
@@ -208,8 +291,8 @@ export class PublicJobsService {
     const profMap = new Map(professions.map((p) => [p.id, p]));
 
     return {
-      total,
-      items: items.map((j) => this.mapJobListItem(j)),
+      total: combinedTotal,
+      items: resultItems,
       facets: {
         berufsfelder: berufsfelderRaw
           .filter((b) => b.professionId && profMap.has(b.professionId))
@@ -226,7 +309,7 @@ export class PublicJobsService {
             count: s._count,
           })),
       },
-      pagination: { page, limit, totalPages: Math.ceil(total / limit) },
+      pagination: { page, limit, totalPages: Math.ceil(combinedTotal / limit) },
     };
   }
 
@@ -645,7 +728,7 @@ export class PublicJobsService {
       city: { contains: cityDecoded },
     };
 
-    const [items, total] = await Promise.all([
+    const [internalItems, internalTotal] = await Promise.all([
       this.prisma.jobPost.findMany({
         where,
         include: this.jobIncludes(),
@@ -656,11 +739,29 @@ export class PublicJobsService {
       this.prisma.jobPost.count({ where }),
     ]);
 
+    // External jobs for this city
+    const extWhere = { ...this.externalJobWhere(portalId), city: { contains: cityDecoded } };
+    const externalTotal = await this.prisma.externalJob.count({ where: extWhere });
+    const combinedTotal = internalTotal + externalTotal;
+
+    let resultItems = internalItems.map((j) => this.mapJobListItem(j));
+    if (resultItems.length < pag.limit) {
+      const extSkip = Math.max(0, pag.skip - internalTotal);
+      const extTake = pag.limit - resultItems.length;
+      const extItems = await this.prisma.externalJob.findMany({
+        where: extWhere,
+        orderBy: { publishedAt: 'desc' },
+        skip: extSkip,
+        take: extTake,
+      });
+      resultItems.push(...extItems.map((j) => this.mapExternalJobListItem(j)));
+    }
+
     return {
       city: { name: cityDecoded, slug: city },
-      total,
-      items: items.map((j) => this.mapJobListItem(j)),
-      pagination: { page: pag.page, limit: pag.limit, totalPages: Math.ceil(total / pag.limit) },
+      total: combinedTotal,
+      items: resultItems,
+      pagination: { page: pag.page, limit: pag.limit, totalPages: Math.ceil(combinedTotal / pag.limit) },
     };
   }
 
@@ -682,7 +783,7 @@ export class PublicJobsService {
       where.beruf = { contains: professionSlug.replace(/-/g, ' ') };
     }
 
-    const [items, total] = await Promise.all([
+    const [internalItems, internalTotal] = await Promise.all([
       this.prisma.jobPost.findMany({
         where,
         include: this.jobIncludes(),
@@ -693,11 +794,30 @@ export class PublicJobsService {
       this.prisma.jobPost.count({ where }),
     ]);
 
+    // External jobs matching by categoryTag
+    const extWhere = this.externalJobWhere(portalId);
+    extWhere.categoryTag = { contains: professionSlug };
+    const externalTotal = await this.prisma.externalJob.count({ where: extWhere });
+    const combinedTotal = internalTotal + externalTotal;
+
+    let resultItems = internalItems.map((j) => this.mapJobListItem(j));
+    if (resultItems.length < pag.limit) {
+      const extSkip = Math.max(0, pag.skip - internalTotal);
+      const extTake = pag.limit - resultItems.length;
+      const extItems = await this.prisma.externalJob.findMany({
+        where: extWhere,
+        orderBy: { publishedAt: 'desc' },
+        skip: extSkip,
+        take: extTake,
+      });
+      resultItems.push(...extItems.map((j) => this.mapExternalJobListItem(j)));
+    }
+
     return {
       profession: profession || { name: professionSlug.replace(/-/g, ' '), slug: professionSlug },
-      total,
-      items: items.map((j) => this.mapJobListItem(j)),
-      pagination: { page: pag.page, limit: pag.limit, totalPages: Math.ceil(total / pag.limit) },
+      total: combinedTotal,
+      items: resultItems,
+      pagination: { page: pag.page, limit: pag.limit, totalPages: Math.ceil(combinedTotal / pag.limit) },
     };
   }
 
@@ -705,9 +825,11 @@ export class PublicJobsService {
 
   async getStats(portalId?: number) {
     const where = this.baseWhere(portalId);
+    const extWhere = this.externalJobWhere(portalId);
 
-    const [totalJobs, totalCompanies, topCitiesRaw, topProfessionsRaw] = await Promise.all([
+    const [totalJobs, externalJobCount, totalCompanies, topCitiesRaw, topProfessionsRaw] = await Promise.all([
       this.prisma.jobPost.count({ where }),
+      this.prisma.externalJob.count({ where: extWhere }),
       this.prisma.jobPost.groupBy({
         by: ['companyId'],
         where,
@@ -739,7 +861,7 @@ export class PublicJobsService {
     const profMap = new Map(profs.map((p) => [p.id, p]));
 
     return {
-      totalJobs,
+      totalJobs: totalJobs + externalJobCount,
       totalCompanies,
       topCities: topCitiesRaw
         .filter((c) => c.city)
@@ -759,15 +881,35 @@ export class PublicJobsService {
   async getLatest(portalId?: number, limit = 10) {
     const take = Math.min(50, Math.max(1, limit));
 
-    const items = await this.prisma.jobPost.findMany({
-      where: this.baseWhere(portalId),
-      include: this.jobIncludes(),
-      orderBy: { publishedAt: 'desc' },
-      take,
-    });
+    const [internalItems, externalItems] = await Promise.all([
+      this.prisma.jobPost.findMany({
+        where: this.baseWhere(portalId),
+        include: this.jobIncludes(),
+        orderBy: { publishedAt: 'desc' },
+        take,
+      }),
+      this.prisma.externalJob.findMany({
+        where: this.externalJobWhere(portalId),
+        orderBy: { publishedAt: 'desc' },
+        take,
+      }),
+    ]);
+
+    // Merge and sort by date, take top N
+    const merged = [
+      ...internalItems.map((j) => ({
+        item: this.mapJobListItem(j),
+        date: j.publishedAt || j.createdAt,
+      })),
+      ...externalItems.map((j) => ({
+        item: this.mapExternalJobListItem(j),
+        date: j.publishedAt || j.createdAt,
+      })),
+    ];
+    merged.sort((a, b) => b.date.getTime() - a.date.getTime());
 
     return {
-      items: items.map((j) => this.mapJobListItem(j)),
+      items: merged.slice(0, take).map((m) => m.item),
     };
   }
 
@@ -776,13 +918,18 @@ export class PublicJobsService {
   async getSitemapData(portalId?: number) {
     const where = this.baseWhere(portalId);
 
-    const [jobs, cities, professions] = await Promise.all([
+    const [jobs, externalJobs, cities, professions] = await Promise.all([
       this.prisma.jobPost.findMany({
         where,
         select: {
           id: true, slug: true, updatedAt: true,
           company: { select: { slug: true } },
         },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.externalJob.findMany({
+        where: this.externalJobWhere(portalId),
+        select: { id: true, slug: true, updatedAt: true },
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.jobPost.groupBy({
@@ -808,10 +955,16 @@ export class PublicJobsService {
     const profMap = new Map(profsData.map((p) => [p.id, p.slug]));
 
     return {
-      jobs: jobs.map((j) => ({
-        slug: `${j.company?.slug || 'firma'}-${j.slug || 'stelle'}-${j.id.substring(0, 8)}`,
-        lastmod: j.updatedAt.toISOString().split('T')[0],
-      })),
+      jobs: [
+        ...jobs.map((j) => ({
+          slug: `${j.company?.slug || 'firma'}-${j.slug || 'stelle'}-${j.id.substring(0, 8)}`,
+          lastmod: j.updatedAt.toISOString().split('T')[0],
+        })),
+        ...externalJobs.map((j) => ({
+          slug: `${j.slug}-${j.id.substring(0, 8)}`,
+          lastmod: j.updatedAt.toISOString().split('T')[0],
+        })),
+      ],
       cities: cities
         .filter((c) => c.city)
         .map((c) => ({
@@ -825,5 +978,211 @@ export class PublicJobsService {
           count: p._count,
         })),
     };
+  }
+
+  // ─── 10. EXTERNAL JOB DETAIL ──────────────────────────────────────────────
+
+  async getExternalJobDetail(idOrPartial: string) {
+    let job: any = null;
+
+    if (idOrPartial.length >= 20) {
+      job = await this.prisma.externalJob.findUnique({
+        where: { id: idOrPartial },
+      });
+    }
+
+    if (!job) {
+      job = await this.prisma.externalJob.findFirst({
+        where: { id: { startsWith: idOrPartial }, isActive: true },
+      });
+    }
+
+    if (!job || !job.isActive) {
+      throw new NotFoundException('Stellenanzeige nicht gefunden');
+    }
+
+    // Increment click count
+    this.prisma.externalJob
+      .update({ where: { id: job.id }, data: { clickCount: { increment: 1 } } })
+      .catch(() => {});
+
+    const domain = this.PORTAL_DOMAINS[job.portalId] || 'ausbildungsgenie.de';
+
+    // Similar external jobs
+    const similarWhere: any = {
+      isActive: true,
+      id: { not: job.id },
+      portalId: job.portalId,
+    };
+    if (job.categoryTag) similarWhere.categoryTag = job.categoryTag;
+    else if (job.city) similarWhere.city = { contains: job.city };
+
+    const similarJobs = await this.prisma.externalJob.findMany({
+      where: similarWhere,
+      orderBy: { publishedAt: 'desc' },
+      take: 6,
+    });
+
+    // Employment type mapping
+    const JOB_TYPE_LABELS: Record<string, string> = {
+      werkstudent: 'Werkstudent',
+      ausbildung: 'Ausbildung',
+      praktikum: 'Praktikum',
+      minijob: 'Minijob',
+      vollzeit: 'Vollzeit',
+    };
+
+    return {
+      job: {
+        id: job.id,
+        title: job.title,
+        slug: job.slug,
+        description: job.description,
+        companyName: job.companyName,
+        city: job.city,
+        postalCode: job.postalCode,
+        latitude: job.latitude ? Number(job.latitude) : null,
+        longitude: job.longitude ? Number(job.longitude) : null,
+        salaryMin: job.salaryMin,
+        salaryMax: job.salaryMax,
+        salaryUnit: job.salaryUnit,
+        category: job.category,
+        categoryTag: job.categoryTag,
+        jobType: job.jobType,
+        jobTypeLabel: JOB_TYPE_LABELS[job.jobType] || job.jobType,
+        portalId: job.portalId,
+        externalUrl: job.externalUrl,
+        source: job.source,
+        publishedAt: job.publishedAt,
+        expiresAt: job.expiresAt,
+        clickCount: job.clickCount,
+        isExternal: true,
+      },
+      company: {
+        name: job.companyName || 'Extern',
+        slug: 'extern',
+        logo: null,
+      },
+      similarJobs: similarJobs.map((j) => this.mapExternalJobListItem(j)),
+      portalDomain: domain,
+    };
+  }
+
+  // ─── 11. EXTERNAL JOB SCHEMA.ORG ─────────────────────────────────────────
+
+  async getExternalJobSchema(idOrPartial: string) {
+    let job: any = null;
+
+    if (idOrPartial.length >= 20) {
+      job = await this.prisma.externalJob.findUnique({
+        where: { id: idOrPartial },
+      });
+    }
+
+    if (!job) {
+      job = await this.prisma.externalJob.findFirst({
+        where: { id: { startsWith: idOrPartial }, isActive: true },
+      });
+    }
+
+    if (!job || !job.isActive) {
+      throw new NotFoundException('Stellenanzeige nicht gefunden');
+    }
+
+    const domain = this.PORTAL_DOMAINS[job.portalId] || 'ausbildungsgenie.de';
+    const id8 = job.id.substring(0, 8);
+
+    // Employment type based on jobType
+    const EMPLOYMENT_TYPES: Record<string, string> = {
+      werkstudent: 'PART_TIME',
+      ausbildung: 'FULL_TIME',
+      praktikum: 'INTERN',
+      minijob: 'PART_TIME',
+      vollzeit: 'FULL_TIME',
+    };
+
+    const schema: any = {
+      '@context': 'https://schema.org/',
+      '@type': 'JobPosting',
+      title: job.title,
+      description: job.description || `${job.title}${job.companyName ? ` bei ${job.companyName}` : ''}`,
+      datePosted: job.publishedAt
+        ? job.publishedAt.toISOString().split('T')[0]
+        : job.createdAt.toISOString().split('T')[0],
+      employmentType: EMPLOYMENT_TYPES[job.jobType] || 'FULL_TIME',
+      identifier: {
+        '@type': 'PropertyValue',
+        name: 'External Job ID',
+        value: job.id,
+      },
+      directApply: false,
+    };
+
+    // Hiring organization
+    if (job.companyName) {
+      schema.hiringOrganization = {
+        '@type': 'Organization',
+        name: job.companyName,
+      };
+    }
+
+    // Valid through
+    if (job.expiresAt) {
+      schema.validThrough = job.expiresAt.toISOString();
+    }
+
+    // Location
+    if (job.city) {
+      schema.jobLocation = {
+        '@type': 'Place',
+        address: {
+          '@type': 'PostalAddress',
+          addressLocality: job.city,
+          ...(job.postalCode && { postalCode: job.postalCode }),
+          addressCountry: 'DE',
+        },
+      };
+
+      if (job.latitude && job.longitude) {
+        schema.jobLocation.geo = {
+          '@type': 'GeoCoordinates',
+          latitude: Number(job.latitude),
+          longitude: Number(job.longitude),
+        };
+      }
+    }
+
+    // Salary
+    if (job.salaryMin) {
+      schema.baseSalary = {
+        '@type': 'MonetaryAmount',
+        currency: 'EUR',
+        value: {
+          '@type': 'QuantitativeValue',
+          minValue: job.salaryMin,
+          ...(job.salaryMax && { maxValue: job.salaryMax }),
+          unitText: job.salaryUnit || 'MONTH',
+        },
+      };
+    }
+
+    // Work hours for specific job types
+    if (job.jobType === 'werkstudent') {
+      schema.workHours = 'max. 20h/Woche';
+      schema.educationRequirements = {
+        '@type': 'EducationalOccupationalCredential',
+        credentialCategory: 'Immatrikulation erforderlich',
+      };
+    } else if (job.jobType === 'minijob') {
+      schema.workHours = 'geringfügig';
+    }
+
+    // Application URL (internal detail page)
+    schema.applicationContact = {
+      '@type': 'ContactPoint',
+      url: `https://${domain}/stellen/${job.slug}-${id8}`,
+    };
+
+    return { schema };
   }
 }

@@ -43,6 +43,7 @@ import { TalentPoolModule } from './talent-pool/talent-pool.module';
 import { SsoModule } from './sso/sso.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
 import { ContactModule } from './contact/contact.module';
+import { ExternalJobsModule } from './external-jobs/external-jobs.module';
 
 @Module({
   imports: [
@@ -106,6 +107,7 @@ import { ContactModule } from './contact/contact.module';
     SsoModule,
     NewsletterModule,
     ContactModule,
+    ExternalJobsModule,
   ],
   providers: [
     {

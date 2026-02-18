@@ -164,7 +164,25 @@ export class PublicJobsController {
     );
   }
 
-  // ─── 8. JOB DETAIL ────────────────────────────────────────────────────────
+  // ─── 8. EXTERNAL JOB DETAIL ──────────────────────────────────────────────
+
+  @Get('external/:id')
+  @ApiOperation({ summary: 'Externe Stellendetails (Adzuna/Jooble/Careerjet)' })
+  @ApiParam({ name: 'id', description: 'External Job ID' })
+  async externalDetail(@Param('id') id: string) {
+    return this.publicJobsService.getExternalJobDetail(id);
+  }
+
+  // ─── 9. EXTERNAL JOB SCHEMA.ORG ────────────────────────────────────────────
+
+  @Get('external/:id/schema')
+  @ApiOperation({ summary: 'Schema.org JSON-LD fuer externe Stellen' })
+  @ApiParam({ name: 'id', description: 'External Job ID' })
+  async externalSchema(@Param('id') id: string) {
+    return this.publicJobsService.getExternalJobSchema(id);
+  }
+
+  // ─── 10. JOB DETAIL ───────────────────────────────────────────────────────
 
   @Get(':id')
   @ApiOperation({ summary: 'Vollstaendige Stellendetails fuer SEO-Seite' })
@@ -173,7 +191,7 @@ export class PublicJobsController {
     return this.publicJobsService.getDetail(id);
   }
 
-  // ─── 9. SCHEMA.ORG JSON-LD ────────────────────────────────────────────────
+  // ─── 11. SCHEMA.ORG JSON-LD ───────────────────────────────────────────────
 
   @Get(':id/schema')
   @ApiOperation({ summary: 'Google for Jobs Schema.org JSON-LD' })
