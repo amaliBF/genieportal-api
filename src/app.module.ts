@@ -44,6 +44,7 @@ import { SsoModule } from './sso/sso.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
 import { ContactModule } from './contact/contact.module';
 import { ExternalJobsModule } from './external-jobs/external-jobs.module';
+import { UserDocumentsModule } from './user-documents/user-documents.module';
 
 @Module({
   imports: [
@@ -108,6 +109,7 @@ import { ExternalJobsModule } from './external-jobs/external-jobs.module';
     NewsletterModule,
     ContactModule,
     ExternalJobsModule,
+    UserDocumentsModule,
   ],
   providers: [
     {

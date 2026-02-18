@@ -45,19 +45,64 @@ export class AiService {
     }
   }
 
+  // ─── PORTAL CONFIG ─────────────────────────────────────────────────────────
+
+  private getPortalConfig(portal?: string) {
+    const configs: Record<string, { name: string; jobType: string; jobTypePlural: string; target: string; finderName: string }> = {
+      werkstudentengenie: {
+        name: 'Werkstudentengenie',
+        jobType: 'Werkstudentenstelle',
+        jobTypePlural: 'Werkstudentenstellen',
+        target: 'Studierende',
+        finderName: 'Werkstudentengenie-Jobfinder',
+      },
+      ausbildungsgenie: {
+        name: 'Ausbildungsgenie',
+        jobType: 'Ausbildungsberuf',
+        jobTypePlural: 'Ausbildungsberufe',
+        target: 'Jugendliche und Schulabgänger',
+        finderName: 'Ausbildungsgenie-Berufsfinder',
+      },
+      berufsgenie: {
+        name: 'Berufsgenie',
+        jobType: 'Job',
+        jobTypePlural: 'Jobs',
+        target: 'Berufssuchende',
+        finderName: 'Berufsgenie-Jobfinder',
+      },
+      praktikumsgenie: {
+        name: 'Praktikumsgenie',
+        jobType: 'Praktikum',
+        jobTypePlural: 'Praktika',
+        target: 'Schüler und Studierende',
+        finderName: 'Praktikumsgenie-Praktikumsfinder',
+      },
+      minijobgenie: {
+        name: 'Minijobgenie',
+        jobType: 'Minijob',
+        jobTypePlural: 'Minijobs',
+        target: 'Schüler, Studierende und Nebenjobber',
+        finderName: 'Minijobgenie-Jobfinder',
+      },
+    };
+    return configs[portal || ''] || configs['ausbildungsgenie'];
+  }
+
   // ─── START CONVERSATION ─────────────────────────────────────────────────────
 
-  async startConversation(userId?: string, sessionId?: string) {
+  async startConversation(userId?: string, sessionId?: string, portal?: string) {
+    const portalConfig = this.getPortalConfig(portal);
+
     const greeting =
-      'Hey! Willkommen beim Ausbildungsgenie-Berufsfinder! ' +
-      'Ich helfe dir, den perfekten Ausbildungsberuf zu finden. ' +
-      'Erzaehl mir doch mal: Was machst du so in deiner Freizeit?';
+      `Hey! Willkommen beim ${portalConfig.finderName}! ` +
+      `Ich helfe dir, ${portalConfig.jobType === 'Ausbildungsberuf' ? 'den perfekten Ausbildungsberuf' : portalConfig.jobType === 'Praktikum' ? 'das perfekte Praktikum' : `den perfekten ${portalConfig.jobType}`} zu finden. ` +
+      'Erzähl mir doch mal: Was machst du so in deiner Freizeit?';
 
     const quickReplies = [
       'Sport & Fitness',
       'Zocken & Technik',
       'Kreativ sein (Zeichnen, Musik...)',
-      'Draussen in der Natur',
+      'Draußen in der Natur',
       'Mit Freunden chillen',
     ];
 
@@ -70,6 +115,7 @@ export class AiService {
       data: {
         userId: userId || null,
         sessionId: sessionId || null,
+        portal: portal || null,
         messages: [initialAssistantMessage] as any,
         questionCount: 1,
         completed: false,
@@ -105,7 +151,7 @@ export class AiService {
     const newQuestionCount = conversation.questionCount + 1;
 
     // Get AI response
-    const parsed = await this.getAiResponse(messages, newQuestionCount);
+    const parsed = await this.getAiResponse(messages, newQuestionCount, conversation.portal || undefined);
 
     // Append assistant message
     messages.push({
@@ -253,13 +299,14 @@ export class AiService {
   private async getAiResponse(
     messages: AiMessage[],
     questionCount: number,
+    portal?: string,
   ): Promise<ParsedAiResponse> {
     if (!this.openai) {
       return this.getMockResponse(questionCount);
     }
 
     try {
-      const systemPrompt = await this.buildSystemPrompt(questionCount);
+      const systemPrompt = await this.buildSystemPrompt(questionCount, portal);
 
       // Build OpenAI messages array with system prompt first
       const openaiMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -287,7 +334,9 @@ export class AiService {
 
   // ─── PRIVATE: BUILD SYSTEM PROMPT ───────────────────────────────────────────
 
-  private async buildSystemPrompt(questionCount: number): Promise<string> {
+  private async buildSystemPrompt(questionCount: number, portal?: string): Promise<string> {
+    const portalConfig = this.getPortalConfig(portal);
+
     // Load all active professions for context
     const professions = await this.prisma.profession.findMany({
       where: { isActive: true },
@@ -319,7 +368,13 @@ export class AiService {
 
     const shouldSuggest = questionCount >= 5;
 
-    return `Du bist der Ausbildungsgenie-Berater, ein freundlicher KI-Assistent, der Jugendlichen hilft, den passenden Ausbildungsberuf zu finden.
+    return `Du bist der ${portalConfig.finderName}, ein freundlicher KI-Assistent auf ${portalConfig.name}, der ${portalConfig.target} hilft, ${portalConfig.jobType === 'Ausbildungsberuf' ? 'den passenden Ausbildungsberuf' : portalConfig.jobType === 'Praktikum' ? 'das passende Praktikum' : `den passenden ${portalConfig.jobType}`} zu finden.
+
+PORTAL-KONTEXT:
+- Du bist auf ${portalConfig.name} (Portal für ${portalConfig.jobTypePlural})
+- Zielgruppe: ${portalConfig.target}
+- Stellentyp: ${portalConfig.jobTypePlural}
+- Passe deine Fragen und Empfehlungen an diesen Kontext an
 
 DEINE PERSOENLICHKEIT:
 - Freundlich und locker (Du, nicht Sie)
@@ -331,9 +386,9 @@ ABLAUF:
 - Frag nach Interessen, Hobbys, Staerken, Schulfaechern, Vorlieben
 - Stelle immer nur EINE Frage pro Nachricht
 - Aktuelle Frage-Nummer: ${questionCount}
-${shouldSuggest ? '- WICHTIG: Du hast genug Informationen gesammelt. Schlage jetzt 3-5 passende Berufe vor!' : '- Sammle noch mehr Informationen (Ziel: 5-7 Fragen bevor du Berufe vorschlaegst)'}
+${shouldSuggest ? `- WICHTIG: Du hast genug Informationen gesammelt. Schlage jetzt 3-5 passende ${portalConfig.jobTypePlural} vor!` : `- Sammle noch mehr Informationen (Ziel: 5-7 Fragen bevor du ${portalConfig.jobTypePlural} vorschlaegst)`}
 
-VERFUEGBARE AUSBILDUNGSBERUFE:
+VERFUEGBARE BERUFE/BRANCHEN:
 ${professionList}
 
 ANTWORT-FORMAT:
@@ -349,7 +404,7 @@ ${
       "name": "Berufsname",
       "id": "die-uuid-aus-der-liste-oder-null",
       "matchPercent": 85,
-      "reason": "Kurze Begruendung warum dieser Beruf passt"
+      "reason": "Kurze Begruendung warum dieser ${portalConfig.jobType} passt"
     }
   ],
   "isComplete": true

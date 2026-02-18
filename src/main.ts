@@ -33,6 +33,7 @@ async function bootstrap() {
     'https://admin.genieportal.de',
     'https://cdn.genieportal.de',
     'https://auth.genieportal.de',
+    'https://mein.genieportal.de',
     // Portal-Landings (SEO-Seiten)
     'https://ausbildungsgenie.de',
     'https://www.ausbildungsgenie.de',

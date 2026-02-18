@@ -53,7 +53,7 @@ export class AiController {
     @Req() req: any,
   ) {
     const userId = req.user?.sub || undefined;
-    return this.aiService.startConversation(userId, dto.sessionId);
+    return this.aiService.startConversation(userId, dto.sessionId, dto.portal);
   }
 
   // ─── CHAT ───────────────────────────────────────────────────────────────────

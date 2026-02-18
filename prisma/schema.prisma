@@ -639,6 +639,7 @@ model User {
   skillTestResults      SkillTestResult[]
   talentPools           TalentPool[]
   ssoRefreshTokens      SsoRefreshToken[]
+  userDocuments         UserDocument[]
 
   @@index([postalCode])
   @@index([status])
@@ -1278,6 +1279,7 @@ model AiConversation {
   id                    String    @id @default(uuid())
   userId                String?   @map("user_id")
   sessionId             String?   @map("session_id") @db.VarChar(100)
+  portal                String?   @db.VarChar(50)
 
   messages              Json      @default("[]")
   suggestedProfessions  Json?     @map("suggested_professions")
@@ -1410,6 +1412,30 @@ enum DocumentType {
   ZEUGNIS
   ZERTIFIKAT
   SONSTIGES
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// USER_DOCUMENTS (Lebenslauf, Zeugnisse etc.)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model UserDocument {
+  id            String       @id @default(uuid())
+  userId        String       @map("user_id")
+  dokumentTyp   DocumentType @default(SONSTIGES) @map("dokument_typ")
+  name          String       @db.VarChar(255)
+  filename      String       @db.VarChar(255)
+  originalName  String       @map("original_name") @db.VarChar(255)
+  mimeType      String       @map("mime_type") @db.VarChar(100)
+  fileSize      Int          @map("file_size")
+  storagePath   String       @map("storage_path") @db.VarChar(500)
+
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_documents")
 }
 
 model EmailLog {

@@ -9,6 +9,14 @@ export class StartConversationDto {
   @IsOptional()
   @IsString()
   sessionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Portal-Kennung (z.B. werkstudentengenie, ausbildungsgenie)',
+    example: 'werkstudentengenie',
+  })
+  @IsOptional()
+  @IsString()
+  portal?: string;
 }
 
 export class ChatDto {
