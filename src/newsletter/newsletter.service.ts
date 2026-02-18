@@ -2,7 +2,6 @@ import {
   Injectable,
   Logger,
   ConflictException,
-  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -28,7 +27,7 @@ export class NewsletterService {
     // Already verified & active
     if (existing && existing.isVerified && existing.isActive) {
       throw new ConflictException(
-        'Du bist bereits fuer den Newsletter angemeldet.',
+        'Du bist bereits für den Newsletter angemeldet.',
       );
     }
 
@@ -44,7 +43,7 @@ export class NewsletterService {
         .catch(() => {});
       return {
         message:
-          'Bestaetigungslink wurde erneut gesendet. Bitte pruefe dein Postfach.',
+          'Bestätigungslink wurde erneut gesendet. Bitte prüfe dein Postfach.',
       };
     }
 
@@ -60,7 +59,7 @@ export class NewsletterService {
         .catch(() => {});
       return {
         message:
-          'Fast geschafft! Bitte bestaetige deine E-Mail-Adresse.',
+          'Fast geschafft! Bitte bestätige deine E-Mail-Adresse.',
       };
     }
 
@@ -89,25 +88,28 @@ export class NewsletterService {
       .catch(() => {});
 
     return {
-      message: 'Fast geschafft! Bitte bestaetige deine E-Mail-Adresse.',
+      message: 'Fast geschafft! Bitte bestätige deine E-Mail-Adresse.',
     };
   }
 
   // ─── VERIFY ─────────────────────────────────────────────────────────────────
 
-  async verify(token: string) {
+  async verify(token: string): Promise<{ url: string; statusCode: number }> {
     const subscriber = await this.prisma.newsletterSubscriber.findFirst({
       where: { verifyToken: token },
     });
 
     if (!subscriber) {
-      throw new NotFoundException(
-        'Ungueltiger oder abgelaufener Bestaetigungs-Link.',
-      );
+      return {
+        url: 'https://genieportal.de/?error=invalid-token',
+        statusCode: 302,
+      };
     }
 
+    const domain = subscriber.domain || 'genieportal.de';
+
     if (subscriber.isVerified) {
-      return { message: 'E-Mail-Adresse wurde bereits bestaetigt.' };
+      return { url: `https://${domain}/newsletter/bestaetigt`, statusCode: 302 };
     }
 
     await this.prisma.newsletterSubscriber.update({
@@ -124,27 +126,30 @@ export class NewsletterService {
       `Newsletter verifiziert: ${subscriber.email} (${subscriber.domain})`,
     );
 
-    return {
-      message: 'Danke! Du wirst benachrichtigt, sobald die App verfuegbar ist.',
-    };
+    return { url: `https://${domain}/newsletter/bestaetigt`, statusCode: 302 };
   }
 
   // ─── UNSUBSCRIBE ────────────────────────────────────────────────────────────
 
-  async unsubscribe(token: string) {
+  async unsubscribe(token: string): Promise<{ url: string; statusCode: number }> {
     const subscriber = await this.prisma.newsletterSubscriber.findFirst({
       where: { unsubscribeToken: token },
     });
 
     if (!subscriber) {
-      throw new NotFoundException('Ungueltiger Abmelde-Link.');
+      return {
+        url: 'https://genieportal.de/?error=invalid-token',
+        statusCode: 302,
+      };
     }
+
+    const domain = subscriber.domain || 'genieportal.de';
 
     await this.prisma.newsletterSubscriber.update({
       where: { id: subscriber.id },
       data: { isActive: false },
     });
 
-    return { message: 'Du wurdest erfolgreich abgemeldet.' };
+    return { url: `https://${domain}/newsletter/abgemeldet`, statusCode: 302 };
   }
 }

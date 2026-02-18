@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Redirect } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { NewsletterService } from './newsletter.service';
 import { SubscribeNewsletterDto } from './dto/subscribe-newsletter.dto';
@@ -15,8 +15,9 @@ export class NewsletterController {
   }
 
   @Get('verify')
-  @ApiOperation({ summary: 'Newsletter E-Mail bestaetigen' })
+  @ApiOperation({ summary: 'Newsletter E-Mail bestätigen' })
   @ApiQuery({ name: 'token', required: true })
+  @Redirect()
   verify(@Query('token') token: string) {
     return this.newsletterService.verify(token);
   }
@@ -24,6 +25,7 @@ export class NewsletterController {
   @Get('unsubscribe')
   @ApiOperation({ summary: 'Newsletter abbestellen' })
   @ApiQuery({ name: 'token', required: true })
+  @Redirect()
   unsubscribe(@Query('token') token: string) {
     return this.newsletterService.unsubscribe(token);
   }
