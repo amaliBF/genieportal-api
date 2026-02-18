@@ -827,12 +827,16 @@ export class PublicJobsService {
     const where = this.baseWhere(portalId);
     const extWhere = this.externalJobWhere(portalId);
 
-    const [totalJobs, externalJobCount, totalCompanies, topCitiesRaw, topProfessionsRaw] = await Promise.all([
+    const [totalJobs, externalJobCount, totalCompanies, externalCompanyCount, topCitiesRaw, topProfessionsRaw] = await Promise.all([
       this.prisma.jobPost.count({ where }),
       this.prisma.externalJob.count({ where: extWhere }),
       this.prisma.jobPost.groupBy({
         by: ['companyId'],
         where,
+      }).then((r) => r.length),
+      this.prisma.externalJob.groupBy({
+        by: ['companyName'],
+        where: { ...extWhere, companyName: { not: null } },
       }).then((r) => r.length),
       this.prisma.jobPost.groupBy({
         by: ['city'],
@@ -862,7 +866,7 @@ export class PublicJobsService {
 
     return {
       totalJobs: totalJobs + externalJobCount,
-      totalCompanies,
+      totalCompanies: totalCompanies + externalCompanyCount,
       topCities: topCitiesRaw
         .filter((c) => c.city)
         .map((c) => ({ name: c.city!, count: c._count })),
