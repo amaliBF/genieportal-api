@@ -321,6 +321,7 @@ export class AiService {
         model: 'gpt-4o-mini',
         max_tokens: 1024,
         messages: openaiMessages,
+        response_format: { type: 'json_object' },
       });
 
       const rawText = response.choices[0]?.message?.content || '';
@@ -483,16 +484,26 @@ WICHTIG:
     rawText: string,
     questionCount: number,
   ): ParsedAiResponse {
-    // Use the raw text as message and provide default quick replies
+    // Use the raw text as message and provide contextual quick replies
     const cleanText = rawText
       .replace(/```json?\s*/g, '')
       .replace(/```/g, '')
       .trim();
 
+    const fallbackReplies: string[][] = [
+      ['Sport & Fitness', 'Zocken & Technik', 'Kreativ sein', 'Draussen in der Natur', 'Mit Freunden chillen'],
+      ['Logisches Denken', 'Kreativitaet', 'Mit Menschen reden', 'Handwerkliches Geschick', 'Organisation'],
+      ['Mathe & Physik', 'Deutsch & Sprachen', 'Kunst & Musik', 'Bio & Chemie', 'Sport'],
+      ['Am Computer arbeiten', 'Draussen unterwegs sein', 'Mit Menschen arbeiten', 'In einer Werkstatt/Labor', 'Im Buero organisieren'],
+      ['Gutes Gehalt', 'Abwechslung', 'Teamarbeit', 'Selbststaendigkeit', 'Karrierechancen'],
+    ];
+
+    const idx = Math.min(Math.max(questionCount - 1, 0), fallbackReplies.length - 1);
+
     return {
       message:
         cleanText || 'Erzaehl mir mehr ueber dich! Was interessiert dich?',
-      quickReplies: ['Sport', 'Technik', 'Kreatives', 'Natur', 'Menschen'],
+      quickReplies: fallbackReplies[idx],
       suggestedProfessions: null,
       isComplete: false,
     };
